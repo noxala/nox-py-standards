@@ -1,8 +1,10 @@
 # test/conftest.py
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 import tomlkit
@@ -51,3 +53,25 @@ def consumer(tmp_path: Path) -> Path:
     (tmp_path / "pyproject.toml").write_text(tomlkit.dumps(document))
     Configuration.read(tmp_path).sync()
     return tmp_path
+
+
+@pytest.fixture
+def version_tools(consumer: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    directory = consumer / "bin"
+    directory.mkdir()
+    log = consumer / "versions.log"
+    for name, version in (("ruff", "0.15.14"), ("pyright", "1.1.411")):
+        executable = directory / name
+        executable.write_text(
+            f"#!{sys.executable}\n"
+            "import os, sys\n"
+            f"with open({str(log)!r}, 'a') as output:\n"
+            f"    output.write({name!r} + ' ' + ' '.join(sys.argv[1:]) + '\\n')\n"
+            "if sys.argv[1:] != ['--version']:\n    sys.exit(9)\n"
+            f"version = os.environ.get('FAKE_{name.upper()}_VERSION', '{version}')\n"
+            f"print('{name} ' + version)\n"
+        )
+        executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(directory) + os.pathsep + os.environ["PATH"])
+    monkeypatch.chdir(consumer)
+    return log

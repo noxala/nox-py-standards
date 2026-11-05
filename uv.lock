@@ -31,11 +31,9 @@ wheels = [
 
 [[package]]
 name = "nox-python-standards"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "pyright" },
-    { name = "ruff" },
     { name = "tomlkit" },
 ]
 
@@ -47,11 +45,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "pyright", specifier = "==1.1.411" },
-    { name = "ruff", specifier = "==0.15.14" },
-    { name = "tomlkit", specifier = "==0.15.0" },
-]
+requires-dist = [{ name = "tomlkit", specifier = "==0.15.0" }]
 
 [package.metadata.requires-dev]
 dev = [

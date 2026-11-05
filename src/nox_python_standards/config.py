@@ -230,7 +230,7 @@ class Configuration:
             raise StandardsError(
                 f"nox-python-standards {release_version()} in {self.root}:\n"
                 + "\n".join(problems)
-                + "\nReview drift, then explicitly run nox-py-standards config sync."
+                + "\nReview drift, then explicitly run nox-py-standards sync."
             )
 
     def sync(self) -> None:

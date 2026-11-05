@@ -60,6 +60,17 @@ def test_check_and_sync_are_stable_and_preserve_local_values(consumer: Path) -> 
             "reportMissingImports",
         ),
         ("ignore = []\n", "", "ruff.lint.ignore"),
+        ("unsafe-fixes = false", "unsafe-fixes = true", "ruff.unsafe-fixes"),
+        (
+            'extend-safe-fixes = ["PT007"]',
+            'extend-safe-fixes = ["ALL"]',
+            "ruff.lint.extend-safe-fixes",
+        ),
+        (
+            'required-version = "==0.15.14"',
+            'required-version = ">=0.15.14"',
+            "ruff.required-version",
+        ),
         ('"A", "B",', '"B", "A",', "ruff.lint.select"),
     ],
 )
@@ -213,12 +224,12 @@ def test_sync_does_not_approve_ruff_or_require_executables(consumer: Path) -> No
 
 
 def test_subdirectory_invocation_uses_git_root(
-    consumer: Path, monkeypatch: pytest.MonkeyPatch
+    consumer: Path, monkeypatch: pytest.MonkeyPatch, version_tools: Path
 ) -> None:
     monkeypatch.chdir(consumer / "src")
-    assert main(["config", "check"]) == 0
-    assert main(["--root", str(consumer), "config", "check"]) == 0
-    assert main(["--root", str(consumer / "src"), "config", "check"]) == 1
+    assert main(["check"]) == 0
+    assert main(["--root", str(consumer), "check"]) == 0
+    assert main(["--root", str(consumer / "src"), "check"]) == 1
 
 
 def test_symlink_snapshot_fails_before_writes(consumer: Path, tmp_path: Path) -> None:

@@ -28,7 +28,12 @@ def verify(root: Path, temporary: Path) -> None:
     run([uv, "build", "--out-dir", str(artifacts)], cwd=root, env=env)
     sdist = next(artifacts.glob("*.tar.gz"))
     wheel = next(artifacts.glob("*.whl"))
-    required = {"policy.json", "ownership.json", "PYTHON_CONVENTIONS.md"}
+    required = {
+        "policy.json",
+        "ownership.json",
+        "versions.json",
+        "PYTHON_CONVENTIONS.md",
+    }
     with zipfile.ZipFile(wheel) as archive:
         if not required <= {Path(name).name for name in archive.namelist()}:
             raise RuntimeError("Wheel missing policy resources")
@@ -75,12 +80,60 @@ def verify(root: Path, temporary: Path) -> None:
         '[tool.nox-python-standards.ruff]\nauthorized_version = "v0.15.14"\n'
         '[tool.pyright]\ninclude = ["src"]\n'
     )
-    env["PATH"] = str(environment / "bin") + os.pathsep + env["PATH"]
+    # Exclude developer environments so they cannot supply consumer-owned tools.
+    system_paths = [
+        entry
+        for entry in env["PATH"].split(os.pathsep)
+        if not any((Path(entry) / name).exists() for name in ("ruff", "pyright"))
+    ]
+    env["PATH"] = os.pathsep.join([str(environment / "bin"), *system_paths])
     cli = str(environment / "bin/nox-py-standards")
-    for arguments in (["config", "sync"], ["config", "check"], ["check"]):
-        run([cli, *arguments], cwd=consumer, env=env)
+    run([cli, "sync"], cwd=consumer, env=env)
     run(
-        [str(python), "-m", "nox_python_standards", "config", "check"],
+        [
+            str(python),
+            "-c",
+            "from importlib import metadata, util; "
+            "assert util.find_spec('ruff') is None; "
+            "assert util.find_spec('pyright') is None; "
+            "assert util.find_spec('nox_python_standards.headers') is None; "
+            "assert util.find_spec('nox_python_standards.hooks') is None; "
+            "assert metadata.requires('nox-python-standards') == ['tomlkit==0.15.0']",
+        ],
+        cwd=consumer,
+        env=env,
+    )
+    before = (consumer / "pyproject.toml").read_bytes()
+    missing = subprocess.run(
+        [cli, "check"],
+        cwd=consumer,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if missing.returncode != 1 or "Could not find 'ruff'" not in missing.stderr:
+        raise RuntimeError(
+            f"Check did not report missing consumer tool: {missing.stderr}"
+        )
+    if (consumer / "pyproject.toml").read_bytes() != before:
+        raise RuntimeError("Check modified consumer settings")
+    run(
+        [
+            uv,
+            "pip",
+            "install",
+            "--python",
+            str(python),
+            "ruff==0.15.14",
+            "pyright==1.1.411",
+        ],
+        cwd=consumer,
+        env=env,
+    )
+    run([cli, "check"], cwd=consumer, env=env)
+    run(
+        [str(python), "-m", "nox_python_standards", "check"],
         cwd=consumer / "src",
         env=env,
     )
