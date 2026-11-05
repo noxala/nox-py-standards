@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -111,7 +112,7 @@ def check_versions(configuration: Configuration) -> None:
         try:
             # Only probe versions. Never format, lint, typecheck or install tools.
             output = subprocess.check_output(
-                [located, "--version"],
+                [str(Path(located).absolute()), "--version"],
                 cwd=configuration.root,
                 text=True,
                 stderr=subprocess.STDOUT,

@@ -1,6 +1,7 @@
 # test/test_versions.py
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -174,6 +175,14 @@ def test_module_entry_uses_consumer_root(consumer: Path, version_tools: Path) ->
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_subdirectory_version_probe_preserves_relative_path_lookup(
+    consumer: Path, version_tools: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(consumer / "src")
+    monkeypatch.setenv("PATH", "../bin" + os.pathsep + os.environ["PATH"])
+    assert main(["check"]) == 0
 
 
 def native(root: Path, tool: str, *arguments: str) -> subprocess.CompletedProcess[str]:
