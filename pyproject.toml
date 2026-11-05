@@ -35,7 +35,7 @@ authorized_version = "v0.15.14"
 # Shared fields are checked against the installed release. Explicit adoption:
 # nox-py-standards config sync; CI: nox-py-standards config check.
 [tool.ruff]
-line-length = 89
+line-length = 88
 target-version = "py314"
 extend-exclude = ["build", "dist", ".venv"]
 
