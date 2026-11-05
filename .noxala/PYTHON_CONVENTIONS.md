@@ -1,37 +1,33 @@
 # Noxala Python conventions
 
-This versioned snapshot is owned by the installed `nox-python-standards` release.
-Run `nox-py-standards check` to verify it, or explicitly run
-`nox-py-standards sync` to adopt that release. Review and commit the diff.
+Versioned by the installed `nox-python-standards` release. `nox-py-standards check`
+verifies this snapshot; explicit `sync` adopts it. Review and commit changes.
 
-## Executable policy
+## Tool policy
 
-Keep complete Ruff and Pyright settings in the consumer's `pyproject.toml`.
-Shared keys must match the installed release; source paths, exclusions, package
-classification and approved test exceptions belong to the consumer. Tach alone
-generates its consumers' first-party package lists.
+Keep complete Ruff/Pyright settings in local `pyproject.toml`. Shared values and
+exact tool pins match the installed release. Paths, exclusions, import
+classification and approved test exceptions stay local; Tach alone generates
+first-party lists.
 
-Use the exact supported tool versions. Ruff approval is a manual decision:
-`sync`, dependency installation and CI never grant approval.
-Keep exact tool pins locally. The checked Ruff settings approve only PT007 among
-otherwise-unsafe fixes (`extend-safe-fixes`); other unsafe fixes stay disabled.
-Repositories own tool invocation, Makefiles, hooks and source-header helpers.
+Ruff version approval is manual; sync, installation and CI never grant it.
+Only PT007 is approved among unsafe fixes. Repositories own tool commands,
+Makefiles, hooks and source-header helpers.
 
-## Written guidance
+## Python guidance
 
-These are review conventions, not an additional AST lint framework:
+These are review conventions, not an additional AST checker.
 
-- Use modern syntax supported by the repository's declared Python version,
-  built-in generic forms and PEP 695 where supported.
-- Add complete type hints that strict Pyright can resolve without `Unknown`.
-- Use explicit `is None` / `is not None` when nullability is the condition.
-- Prefer small explicit abstractions to broad dependencies.
-- Retain a repository-relative path header in each Python source file.
-- Normally use `@dataclass(frozen=True, slots=True, kw_only=True)`.
-- Put factory methods on their dataclass, normally `@classmethod create(...)`.
-  Keep workflow orchestration and I/O with the subsystem that owns them.
+- Use supported modern syntax, built-in generics and PEP 695.
+- Type fully for strict Pyright, without `Unknown`.
+- Check nullability with `is None` / `is not None`.
+- Prefer small abstractions to broad dependencies.
+- Keep a repository-relative path header in each Python source.
+- Default to `@dataclass(frozen=True, slots=True, kw_only=True)`; put factory
+  methods on the dataclass, normally `@classmethod create(...)`.
+- Keep orchestration and I/O with the owning subsystem.
 - Test meaningful success, boundary, invalid-input and conflict behavior.
-  Avoid tests that only restate the implementation.
-- Use `whitelist`, `blacklist` and `master` in code and documentation.
+  Avoid tests that restate the implementation.
+- Use `whitelist`, `blacklist` and `master`.
 
-Read the consumer's instructions for its architecture and domain additions.
+Follow repository instructions for architecture and domain rules.
