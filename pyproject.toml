@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nox-python-standards"
+version = "0.1.0"
+description = "Checked local copies of Noxala Python standards and development tools"
+readme = "README.md"
+requires-python = ">=3.14.10,<3.15"
+dependencies = ["ruff==0.15.14", "pyright==1.1.411", "tomlkit==0.15.0"]
+
+[project.scripts]
+nox-py-standards = "nox_python_standards.cli:main"
+
+[dependency-groups]
+dev = ["pytest==9.0.3", "ruff==0.15.14", "pyright==1.1.411"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+nox_python_standards = ["resources/*.json", "resources/*.md", "py.typed"]
+
+[tool.uv]
+required-version = ">=0.13.6"
+
+[tool.nox-python-standards]
+sources = ["src", "test", "tools"]
+dependency-group = "dev"
+
+[tool.nox-python-standards.ruff]
+authorized_version = "v0.15.14"
+
+# Shared fields are checked against the installed release. Explicit adoption:
+# nox-py-standards config sync; CI: nox-py-standards config check.
+[tool.ruff]
+line-length = 89
+target-version = "py314"
+extend-exclude = ["build", "dist", ".venv"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["A", "B", "DTZ", "E", "F", "I", "LOG", "N", "PGH", "PIE", "PT", "RET", "RUF", "SIM", "SLF", "T20", "UP", "W"]
+ignore = []
+extend-ignore = ["RET504", "SIM102", "SIM103", "SIM108", "SIM110"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+required-imports = ["from __future__ import annotations"]
+known-first-party = ["nox_python_standards"]
+known-third-party = []
+
+[tool.ruff.lint.per-file-ignores]
+"test/**/*.py" = ["SLF001"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+reportMissingImports = "error"
+reportMissingTypeStubs = false
+include = ["src", "test", "tools"]
+exclude = ["build", "dist", ".venv"]
+extraPaths = ["src"]
+pythonVersion = "3.14"
+venvPath = "."
+venv = ".venv"
+executionEnvironments = [{ root = "test", reportPrivateUsage = "none" }]
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = "-ra"
+filterwarnings = ["error"]
