@@ -52,8 +52,9 @@ but leaves the approval decision to the developer.
 competing native configs; then checks exact declared tool pins, manual Ruff approval
 and active tool versions. Its only tool invocations are `ruff --version` and
 `pyright --version`. Missing tools, drift and version mismatches fail with diagnostics.
-The Pyright version probe selects its bundled pinned release and disables component
-downloads; repositories own their normal Pyright execution and environment.
+Before probing Pyright, check requires Node.js on PATH so the launcher cannot fall
+back to installing Node. The probe selects the bundled pinned Pyright release;
+repositories own their normal Pyright execution and environment.
 
 `sync` repairs shared configuration and the conventions snapshot, preserving local
 settings/comments and approval. It needs neither Ruff nor Pyright installed. Invalid

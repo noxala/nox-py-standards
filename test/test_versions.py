@@ -130,7 +130,7 @@ def test_included_groups_cannot_hide_tool_duplicates() -> None:
         group_values({"dev": [{"include-group": "dev"}]}, "dev")
 
 
-def test_version_probe_prevents_pyright_downloads(
+def test_version_probe_uses_bundled_pyright(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PYRIGHT_PYTHON_FORCE_VERSION", "latest")
@@ -141,6 +141,45 @@ def test_version_probe_prevents_pyright_downloads(
     assert environment["PYRIGHT_PYTHON_GLOBAL_NODE"] == "1"
     assert environment["PYRIGHT_PYTHON_NODEJS_WHEEL"] == "0"
     assert "PYRIGHT_PYTHON_PYLANCE_VERSION" not in environment
+
+
+def test_missing_node_stops_real_pyright_before_nodeenv(
+    consumer: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binaries = consumer / "bin"
+    binaries.mkdir()
+    for name in ("git", "ruff", "pyright"):
+        executable = shutil.which(name)
+        assert executable is not None
+        (binaries / name).symlink_to(executable)
+    cache = consumer / "empty-cache"
+    cache.mkdir()
+    bootstrap = consumer / "bootstrap"
+    bootstrap.mkdir()
+    launched = consumer / "pyright-launched"
+    installer = consumer / "installer-attempt"
+    # Observe the real launcher, but stop nodeenv before any installer can run.
+    (bootstrap / "sitecustomize.py").write_text(
+        "import sys\nfrom pathlib import Path\n"
+        f"Path({str(launched)!r}).write_text('Pyright launched')\n"
+        "def audit(event, arguments):\n"
+        "    if event == 'subprocess.Popen':\n"
+        f"        Path({str(installer)!r}).write_text(repr(arguments[1]))\n"
+        "        raise RuntimeError('Installer subprocess blocked by test')\n"
+        "sys.addaudithook(audit)\n"
+    )
+    monkeypatch.setenv("PATH", str(binaries))
+    monkeypatch.setenv("PYTHONPATH", str(bootstrap))
+    monkeypatch.setenv("PYRIGHT_PYTHON_CACHE_DIR", str(cache))
+    monkeypatch.setenv("PYRIGHT_PYTHON_ENV_DIR", str(cache / "nodeenv"))
+    assert shutil.which("node") is None
+    assert main(["--root", str(consumer), "check"]) == 1
+    assert not installer.exists(), installer.read_text()
+    assert not launched.exists()
+    assert list(cache.iterdir()) == []
+    assert "Node.js must be installed on PATH" in capsys.readouterr().err
 
 
 def test_ruff_runtime_requirement_matches_version_policy() -> None:

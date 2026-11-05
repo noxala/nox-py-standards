@@ -17,7 +17,7 @@ _VERSION = r"([0-9]+\.[0-9]+\.[0-9]+)"
 
 def tool_environment() -> dict[str, str]:
     environment = os.environ.copy()
-    # The Python launcher otherwise checks for updates and can download npm/Node.
+    # Use bundled Pyright; Node availability is checked before launching its probe.
     environment.update(
         {
             "PYRIGHT_PYTHON_FORCE_VERSION": release_pins()["pyright"],
@@ -108,6 +108,11 @@ def check_versions(configuration: Configuration) -> None:
             raise StandardsError(
                 f"Could not find {name!r} on PATH; "
                 "install locked development dependencies"
+            )
+        # GLOBAL_NODE prefers PATH but falls back to installing nodeenv if absent.
+        if name == "pyright" and shutil.which("node") is None:
+            raise StandardsError(
+                "Node.js must be installed on PATH; no downloads are attempted"
             )
         try:
             # Only probe versions. Never format, lint, typecheck or install tools.
