@@ -1,33 +1,25 @@
-# Python standards implementation instructions
+# nox-python-standards
 
-Read [.noxala/PYTHON_CONVENTIONS.md](.noxala/PYTHON_CONVENTIONS.md) before Python
-changes. `pyproject.toml` is authoritative for package versions and dependencies.
+`nox-py-standards` exposes only `check` and `sync`; consumers own tool execution.
 
-The public CLI has exactly two operations: `check` and `sync`. Keep it focused on
-policy verification/adoption. Consumers own commands, Makefiles, hooks, header
-helpers, formatting, linting, typing, tests and workflow order. Do not add tool
-runners or install/upgrade dependencies. Version probes use only `--version`.
+- `check` is read-only; probes use only `--version`. Neither command installs or
+  upgrades dependencies.
+- `sync` is explicit, validated before writes and idempotent. Preserve local
+  settings, pins, lockfiles and manual Ruff approval.
+- Locate consumer files from their Git root. Installed wheels must work without
+  consumer imports, databases or network access.
 
-This package must work from a non-editable installation without COMO, Milan, Tach,
-databases or network access after installation. Never import a consumer. Locate
-consumer files from its Git root, never this package's location.
+Read the references relevant to your task:
 
-`resources/policy.json` owns shared settings, `resources/versions.json` owns tool
-versions, and `resources/ownership.json` classifies local fields. Reject unclassified
-keys and nested overrides. Keep native configs complete and readable locally.
-Retain exact consumer tool pins and separate manual Ruff approval. Sync never
-updates pins, lockfiles or approval. Unsafe fix approval remains exclusive to PT007
-through Ruff's native `extend-safe-fixes` setting. Check validates active versions;
-Ruff and Pyright are consumer tools, not runtime dependencies of this package.
+- Python edits: [conventions](.noxala/PYTHON_CONVENTIONS.md).
+- CLI or policy edits: [behavior](README.md#check-and-sync),
+  [ownership](README.md#configuration-ownership) and
+  [fix policy](README.md#native-fix-policy). Canonical policy lives in
+  `src/nox_python_standards/resources/`; package metadata in `pyproject.toml`.
+- Code or packaging edits: run [validation](README.md#ci-and-package-development).
+  Standards must pass before fixes; never auto-sync. Tests mirror modules in `test/`.
+- Consumer adoption: [installation](README.md#install-and-adopt); use only a merged,
+  immutable commit.
 
-Run `uv sync --locked` and `uv run --locked nox-py-standards check` before source
-repairs. Run native `ruff format .`, `ruff check --fix .`, `ruff format .` until
-stable, then pytest, `pyright --threads 4` and `python tools/verify_distribution.py`
-in the project environment. Never use fixes or automatic sync to hide config drift.
-
-Tests mirror owning modules under `test/`. Validate proposed settings before writes;
-check never edits source/configuration. Keep sync explicit, minimal and idempotent.
-
-Start new PRs from current `master`, request `denisgrenader`, and enable auto-merge
-when supported. All quality checks must pass before merge. Migrate consumers only
-after the package is merged and pinned to its immutable merged commit.
+Start new PRs from current `master`; continue existing PRs on their branch.
+Request `denisgrenader`, enable auto-merge when supported, and require all quality checks.
