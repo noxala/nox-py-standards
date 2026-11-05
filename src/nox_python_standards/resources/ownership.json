@@ -1,0 +1,15 @@
+{
+  "ruff.target-version": "string",
+  "ruff.extend-exclude": "strings",
+  "ruff.lint.isort.known-first-party": "strings",
+  "ruff.lint.isort.known-third-party": "strings",
+  "ruff.lint.per-file-ignores": "private-test-rules",
+  "pyright.include": "strings",
+  "pyright.exclude": "strings",
+  "pyright.extraPaths": "strings",
+  "pyright.stubPath": "string",
+  "pyright.pythonVersion": "string",
+  "pyright.venvPath": "string",
+  "pyright.venv": "string",
+  "pyright.executionEnvironments": "test-environments"
+}

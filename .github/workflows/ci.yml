@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: quality (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: Linux
+            runner: ubuntu-latest
+          - os: macOS
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - name: Install Python
+        run: uv python install 3.14.10
+      - name: Install package and locked dependencies
+        run: uv sync --locked
+      - name: Check Python standards configuration
+        run: uv run --locked nox-py-standards config check
+      - name: Check tools, headers, Ruff and Pyright
+        run: uv run --locked nox-py-standards check
+      - name: Run tests
+        run: uv run --locked pytest
+      - name: Verify wheel and sdist isolation
+        run: uv run --locked python tools/verify_distribution.py

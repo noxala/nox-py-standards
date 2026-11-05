@@ -1,0 +1,17 @@
+{
+  "ruff.line-length": 88,
+  "ruff.format.quote-style": "double",
+  "ruff.format.indent-style": "space",
+  "ruff.format.line-ending": "lf",
+  "ruff.format.skip-magic-trailing-comma": false,
+  "ruff.format.docstring-code-format": true,
+  "ruff.lint.select": ["A", "B", "DTZ", "E", "F", "I", "LOG", "N", "PGH", "PIE", "PT", "RET", "RUF", "SIM", "SLF", "T20", "UP", "W"],
+  "ruff.lint.ignore": [],
+  "ruff.lint.extend-ignore": ["RET504", "SIM102", "SIM103", "SIM108", "SIM110"],
+  "ruff.lint.isort.combine-as-imports": true,
+  "ruff.lint.isort.force-sort-within-sections": true,
+  "ruff.lint.isort.required-imports": ["from __future__ import annotations"],
+  "pyright.typeCheckingMode": "strict",
+  "pyright.reportMissingImports": "error",
+  "pyright.reportMissingTypeStubs": false
+}
