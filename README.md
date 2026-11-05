@@ -1,128 +1,143 @@
 # nox-python-standards
 
-Shared Noxala Python policy with **complete checked local configuration**. Ruff,
-Pyright and editors read each repository's ordinary `pyproject.toml`. The installed
-release verifies those copies; only explicit `config sync` changes them.
+The golden settings for Noxala Python repositories, with two operations:
 
-Initial policy and helper behavior come from COMO
-[`da28acec147d114270ba4524f51a47a5afb2515e`](https://github.com/noxala/como/tree/da28acec147d114270ba4524f51a47a5afb2515e),
-implementing the standalone-package stage of
-[COMO #518](https://github.com/noxala/como/issues/518). Consumers have not migrated.
+```sh
+nox-py-standards check
+nox-py-standards sync
+```
 
-## Installation and adoption
+Each repository keeps complete, readable Ruff/Pyright configuration in its own
+`pyproject.toml`. Editors and native commands use that ordinary local configuration.
+The installed standards release checks those copies; explicit sync adopts its values.
+Each repository owns its Makefile, hooks, CI, formatting, typing and helper scripts.
 
-Python `>=3.14.10,<3.15`, uv `>=0.13.6`, Git and Node.js (for Pyright) are required.
-The distribution pins Ruff `0.15.14`, Pyright `1.1.411` and its TOML round-trip editor.
-Install only as a consumer **development** dependency, pinned to a reviewed full
-merged commit:
+## Install and adopt
+
+Install as a development dependency pinned to a reviewed full merged Git commit:
 
 ```text
 nox-python-standards @ git+https://github.com/noxala/nox-python-standards.git@<full-merged-sha>
 ```
 
-Authenticate private Git access before `uv sync --locked`, using a credential helper
-or appropriately scoped app/token. Do not put credentials in tracked URLs or logs.
-A repository-scoped Actions token does not grant cross-repository access.
-
-Keep exact direct `ruff==0.15.14` and `pyright==1.1.411` pins in the selected
-dependency group. Configure the source scope explicitly:
+Python `>=3.14.10,<3.15` and Git are required. The package's only runtime dependency
+is its TOML editor. Consumers install their own exact Ruff/Pyright pins; Node.js is
+required by the Python Pyright launcher. Current supported versions are policy data
+in `resources/versions.json`: Ruff `0.15.14`, Pyright `1.1.411`.
 
 ```toml
+[dependency-groups]
+dev = ["ruff==0.15.14", "pyright==1.1.411"]
+
 [tool.nox-python-standards]
 sources = ["."]
 dependency-group = "dev"
 
 [tool.nox-python-standards.ruff]
-authorized_version = "v0.15.14"  # manual approval, never written by sync
+authorized_version = "v0.15.14"  # manual approval; sync never changes this
 ```
 
-Retain all local Ruff/Pyright tables. Run `uv run nox-py-standards config sync`,
-review the local shared-field diff and `.noxala/PYTHON_CONVENTIONS.md`, then commit
-the dependency pin, lockfile and copies together. Root instructions must explicitly
-tell agents to read the local conventions snapshot and state domain additions.
+Keep local path/exclusion/import settings, run `uv run nox-py-standards sync`, review
+and commit the configuration and `.noxala/PYTHON_CONVENTIONS.md` snapshot. Root agent
+instructions should require reading the snapshot and state repository additions.
 
-For an upgrade, review the central release first, update the immutable dependency
-pin and lockfile, install, explicitly sync, then review the ordinary local diff.
-Update direct tool pins when required. A changed Ruff version requires separate
-manual approval; sync never grants it. Run the normal consumer CI before merging.
-No command fetches a moving branch or installs/upgrades tools.
+Advance through reviewed dependency/lockfile updates. Sync never changes tool pins,
+lockfiles or approval. A tool upgrade requires deliberate dependency changes and
+separate manual Ruff approval; sync may update the required Ruff version in config
+but leaves the approval decision to the developer.
 
-## Commands
+## Check and sync
 
-Run from anywhere inside the consumer Git repository, or put `--root /repo` before
-the command. `python -m nox_python_standards` uses the same implementation.
+`check` is read-only. It compares shared settings, ownership and conventions; rejects
+competing native configs; then checks exact declared tool pins, manual Ruff approval
+and active tool versions. Its only tool invocations are `ruff --version` and
+`pyright --version`. Missing tools, drift and version mismatches fail with diagnostics.
+The Pyright version probe selects its bundled pinned release and disables component
+downloads; repositories own their normal Pyright execution and environment.
 
-| Command after `nox-py-standards` | Behavior |
-| --- | --- |
-| `config check` | Read-only shared values, ownership, discovery and conventions gate |
-| `config sync` | Explicitly repair shared fields and conventions, preserving local data/comments |
-| `versions` | Verify release/consumer/executable pins and manual Ruff approval |
-| `ruff check` | Config/version gates, format check, lint check |
-| `ruff fix` | Config/version gates, format, unsafe PT007 fix, safe lint fix, format |
-| `typecheck [--threads N] [--watch]` | Config/version gates, native Pyright |
-| `headers check` / `headers fix` | Git-aware repository-relative source headers |
-| `hooks check` | Verify executable pre-commit-managed pre-push hook; never install |
-| `check` | Config/version/header/Ruff/Pyright verification; excludes local hook prerequisite |
-| `fix` | Config/version gates, header repair and Ruff repair; never sync |
+`sync` repairs shared configuration and the conventions snapshot, preserving local
+settings/comments and approval. It needs neither Ruff nor Pyright installed. Invalid
+TOML, unclassified overrides and conflicting native configs fail before writes.
+Repeated sync is byte-stable. Each destination is replaced atomically.
 
-Failures stop the command and return nonzero. Tool execution uses the same absolute
-launcher paths that were version-validated. Wrappers accept no config replacement
-or policy override flags. `make ruff` consumers should delegate to `ruff fix`, not
-the broader `fix` command. Normal tool caches may be created by check commands.
-Pyright runs its bundled pinned version with update warnings disabled; Node must
-already be on PATH. Environment overrides cannot select a newer Pyright release.
+Run from the consumer repository or a subdirectory. `--root /repo` selects an explicit
+Git root. `python -m nox_python_standards` provides the same two operations.
+Version `0.2.0` removes the old `config`, `versions`, `ruff`, `typecheck`, `headers`,
+`hooks` and `fix` operations. `check` now validates standards only; lint, formatting,
+source headers, typing and tests belong to each repository's checks.
 
-## Ownership and native discovery
+## Native fix policy
 
-Installed `resources/policy.json` owns every explicitly shared field; array order
-and types matter. Missing shared fields fail even when native defaults match.
-`resources/ownership.json` describes local keys and their types. Unrelated tool,
-project and dependency tables are untouched. The initial narrow exceptions are
-`test/**/*.py = ["SLF001"]` and Pyright's `root = "test"` private-access exception.
-Other nested diagnostics require a reviewed schema extension.
+The checked local settings include:
 
-Source paths, exclusions and package classification remain local decisions.
-Tach alone generates its consumers' `known-first-party`. Config sync preserves
-them and never changes dependencies, approval, source code or installed resources.
-Malformed TOML, unclassified overrides, invalid local fields and conflicting native
-configs block sync before writes. Each changed file is replaced atomically.
+```toml
+[tool.ruff]
+required-version = "==0.15.14"
+fix = false
+fix-only = false
+unsafe-fixes = false
 
-Root `ruff.toml`, `.ruff.toml`, `pyrightconfig.json`, inheritance and nested Ruff
-configs affecting scoped Git sources are rejected, including relevant untracked
-sources and ignored configs above them. Generic vendor/environment directories are
-excluded from discovery. Fixtures outside source scope may hold example configs.
+[tool.ruff.lint]
+extend-safe-fixes = ["PT007"]
+extend-unsafe-fixes = []
+fixable = ["ALL"]
+unfixable = []
+```
 
-Headers preserve supported UTF-8 LF/CRLF files, shebangs, long-path treatment,
-executable permissions and tracked/non-ignored-untracked discovery. All candidate
-files are rendered before any writes. Compared with COMO's helper, this explicitly
-rejects symlinks, unsupported encodings/line endings and unsafe coding-cookie moves,
-handles tracked deletions, and repairs a shebang lacking its final newline.
-These are safety fixes to malformed/unsupported input; supported COMO rendering is
-unchanged. Hook detection honors Git worktrees and custom `core.hooksPath`.
+This explicitly approves PT007's otherwise-unsafe fix. A normal local
+`ruff check --fix .` applies it and safe fixes; other unsafe fixes stay disabled.
+Native Ruff enforces its exact required version. CLI flags can override native
+settings, so each repository reviews and tests its own command recipes.
 
-## CI and development
+For example, a repository can maintain this local target:
+
+```make
+ruff:
+	uv run --locked nox-py-standards check
+	uv run --locked ruff format .
+	uv run --locked ruff check --fix .
+	uv run --locked ruff format .
+```
+
+Headers, hook installation, test workers, Tach, databases and workflow order are
+repository responsibilities. This package does not wrap those operations.
+
+## Configuration ownership
+
+`resources/policy.json` owns shared fields; `resources/ownership.json` classifies
+local keys and types. Missing shared values fail even when native defaults match.
+Sources, exclusions, package classification and existing test exceptions remain
+local. Tach owns its consumers' generated first-party lists. Unrelated tables are
+preserved. Unclassified policy overrides, inheritance, root `ruff.toml`, `.ruff.toml`,
+`pyrightconfig.json`, and nested Ruff configs affecting scoped Git sources fail.
+
+The initial shared rules and conventions originated in COMO at
+[`da28acec147d114270ba4524f51a47a5afb2515e`](https://github.com/noxala/como/tree/da28acec147d114270ba4524f51a47a5afb2515e).
+This package has no dependency on a consumer repository.
+
+## CI and package development
+
+Consumers put `uv run --locked nox-py-standards check` immediately after locked
+dependency installation, before any generator or fix hook, and first in local
+pre-commit/pre-push hooks. Keep that gate unconditional and required for merge.
+CI never syncs automatically. Run repository-specific checks afterward.
+
+For this package:
 
 ```sh
 uv sync --locked
-uv run nox-py-standards config check
-uv run nox-py-standards versions
-uv run nox-py-standards ruff check
-uv run nox-py-standards typecheck --threads 4
-uv run pytest
-uv run python tools/verify_distribution.py
+uv run --locked nox-py-standards check
+uv run --locked ruff format --check .
+uv run --locked ruff check .
+uv run --locked pyright --threads 4
+uv run --locked pytest
+uv run --locked python tools/verify_distribution.py
 ```
 
-The Linux/macOS workflow builds and installs this package before invoking the CLI.
-It checks configuration before any source checks. The distribution check builds a
-wheel from the sdist, installs it without editable paths into a clean environment,
-then uses a separate Git consumer with no `PYTHONPATH` or sibling checkout dependency.
+The Linux/macOS workflow uses native tools directly. Distribution verification
+builds a wheel from the sdist and installs it in isolation. It exercises both
+operations without tool installations, proves check reports missing tools, then
+installs consumer-owned tools and verifies console/module checks.
 
-Consumer migration must put an unconditional `uv run --locked nox-py-standards
-config check` immediately after locked installation, before generation/fix hooks,
-and first in local pre-commit/pre-push hooks with `fail_fast: true`. No automatic
-sync, path filtering or `continue-on-error` may hide drift. Make it a required merge
-check. Keep consumer application tests and architecture gates.
-
-Repository administrators must enable auto-merge and require both `quality (Linux)`
-and `quality (macOS)` checks. The initial inherited review rule does not require
-status checks. This package's PR does not change repository administration settings.
+Repository administrators should enable auto-merge and require `quality (Linux)`
+and `quality (macOS)`. Package code does not change repository settings.

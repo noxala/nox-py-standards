@@ -1,16 +1,14 @@
 # src/nox_python_standards/versions.py
 from __future__ import annotations
 
-from dataclasses import dataclass
-from importlib import metadata
+import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 from typing import cast
 
-from nox_python_standards.config import Configuration, table
+from nox_python_standards.config import Configuration, resource, table
 from nox_python_standards.repository import StandardsError
 
 _VERSION = r"([0-9]+\.[0-9]+\.[0-9]+)"
@@ -56,18 +54,8 @@ def group_values(
 
 
 def release_pins() -> dict[str, str]:
-    """Distribution dependencies are the single authority for supported tools."""
-    dependencies = metadata.requires("nox-python-standards") or []
-    pins: dict[str, str] = {}
-    for name in ("ruff", "pyright"):
-        matches = [re.fullmatch(rf"{name}=={_VERSION}", dep) for dep in dependencies]
-        values = [match.group(1) for match in matches if match is not None]
-        if len(values) != 1:
-            raise StandardsError(
-                f"Installed standards release needs one exact {name} pin"
-            )
-        pins[name] = values[0]
-    return pins
+    """Supported tools are policy data, not package runtime dependencies."""
+    return cast(dict[str, str], json.loads(resource("versions.json")))
 
 
 def consumer_pin(dependencies: list[object], name: str) -> str:
@@ -91,100 +79,50 @@ def consumer_pin(dependencies: list[object], name: str) -> str:
     return match.group(1)
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Tools:
-    ruff: Path
-    pyright: Path
-
-    @classmethod
-    def validate(cls, configuration: Configuration) -> Tools:
-        if shutil.which("node") is None:
+def check_versions(configuration: Configuration) -> None:
+    groups = table(configuration.data.get("dependency-groups"), "dependency-groups")
+    dependencies = group_values(groups, configuration.dependency_group)
+    settings = table(configuration.tool["nox-python-standards"], "standards settings")
+    approval = table(settings.get("ruff"), "tool.nox-python-standards.ruff")
+    authorized = approval.get("authorized_version")
+    if (
+        set(approval) != {"authorized_version"}
+        or not isinstance(authorized, str)
+        or re.fullmatch(rf"v{_VERSION}", authorized) is None
+    ):
+        raise StandardsError("Ruff authorized_version must use the form 'vX.Y.Z'")
+    supported = release_pins()
+    for name, expected in supported.items():
+        declared = consumer_pin(dependencies, name)
+        if declared != expected or (name == "ruff" and authorized != f"v{expected}"):
             raise StandardsError(
-                "Node.js must be installed on PATH; no downloads are attempted"
+                f"{name} version mismatch: standards {expected}, "
+                f"dependency {declared}, Ruff approval {authorized}. "
+                "Update dependencies deliberately; "
+                "Ruff approval requires manual review."
             )
-        groups = table(configuration.data.get("dependency-groups"), "dependency-groups")
-        dependencies = groups.get(configuration.dependency_group)
-        if not isinstance(dependencies, list):
-            raise StandardsError("Configured dependency group must be an array")
-        settings = table(
-            configuration.tool["nox-python-standards"], "standards settings"
-        )
-        approval = table(settings.get("ruff"), "tool.nox-python-standards.ruff")
-        authorized = approval.get("authorized_version")
-        if set(approval) != {"authorized_version"} or not isinstance(authorized, str):
-            raise StandardsError("Ruff authorized_version must use the form 'vX.Y.Z'")
-        match = re.fullmatch(rf"v{_VERSION}", authorized)
-        if match is None:
-            raise StandardsError("Ruff authorized_version must use the form 'vX.Y.Z'")
-        supported = release_pins()
-        flattened = group_values(groups, configuration.dependency_group)
-        executables: dict[str, Path] = {}
-        for name in ("ruff", "pyright"):
-            declared = consumer_pin(cast(list[object], dependencies), name)
-            consumer_pin(
-                flattened, name
-            )  # Included groups must not hide duplicate pins.
-            if declared != supported[name] or (
-                name == "ruff" and match.group(1) != declared
-            ):
-                raise StandardsError(
-                    f"{name} version mismatch: release {supported[name]}, "
-                    f"dependency {declared}, Ruff approval {authorized}. "
-                    "Ruff upgrades require explicit manual review; "
-                    "Review tool.nox-python-standards.ruff.authorized_version."
-                )
-            located = shutil.which(name)
-            if located is None:
-                raise StandardsError(
-                    f"Could not find {name!r} on PATH; install locked dependencies"
-                )
-            # Keep the launcher path: resolving a venv symlink can change its runtime.
-            executable = Path(located).absolute()
-            try:
-                output = subprocess.check_output(
-                    [str(executable), "--version"],
-                    cwd=configuration.root,
-                    text=True,
-                    stderr=subprocess.STDOUT,
-                    env=tool_environment(),
-                ).strip()
-            except (OSError, subprocess.CalledProcessError) as exc:
-                raise StandardsError(f"{name} --version failed: {exc}") from exc
-            actual = re.fullmatch(
-                rf"{name}\s+{_VERSION}(?:[ \t].*)?", output, re.IGNORECASE
+    for name, expected in supported.items():
+        located = shutil.which(name)
+        if located is None:
+            raise StandardsError(
+                f"Could not find {name!r} on PATH; "
+                "install locked development dependencies"
             )
-            if actual is None or actual.group(1) != supported[name]:
-                raise StandardsError(
-                    f"{name} executable mismatch: expected {supported[name]}; "
-                    f"actual {output!r}"
-                )
-            executables[name] = executable
-        return cls(ruff=executables["ruff"], pyright=executables["pyright"])
-
-
-def run(root: Path, executable: Path, *arguments: str) -> None:
-    result = subprocess.run(
-        [str(executable), *arguments],
-        cwd=root,
-        env=tool_environment(),
-        check=False,
-    )
-    if result.returncode:
-        raise StandardsError(
-            f"{executable.name} failed with exit code {result.returncode}"
+        try:
+            # Only probe versions. Never format, lint, typecheck or install tools.
+            output = subprocess.check_output(
+                [located, "--version"],
+                cwd=configuration.root,
+                text=True,
+                stderr=subprocess.STDOUT,
+                env=tool_environment(),
+            ).strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise StandardsError(f"{name} --version failed: {exc}") from exc
+        actual = re.fullmatch(
+            rf"{name}\s+{_VERSION}(?:[ \t].*)?", output, re.IGNORECASE
         )
-
-
-def ruff(configuration: Configuration, tools: Tools, *, fix: bool) -> None:
-    paths = [path.as_posix() for path in configuration.sources]
-    if fix:
-        commands = (
-            ["format", *paths],
-            ["check", "--select", "PT007", "--fix", "--unsafe-fixes", *paths],
-            ["check", "--fix", *paths],
-            ["format", *paths],
-        )
-    else:
-        commands = (["format", "--check", *paths], ["check", *paths])
-    for command in commands:
-        run(configuration.root, tools.ruff, *command)
+        if actual is None or actual.group(1) != expected:
+            raise StandardsError(
+                f"{name} executable mismatch: expected {expected}; actual {output!r}"
+            )

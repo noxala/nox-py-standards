@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nox-python-standards"
-version = "0.1.0"
-description = "Checked local copies of Noxala Python standards and development tools"
+version = "0.2.0"
+description = "Check and sync complete local copies of Noxala Python standards"
 readme = "README.md"
 requires-python = ">=3.14.10,<3.15"
-dependencies = ["ruff==0.15.14", "pyright==1.1.411", "tomlkit==0.15.0"]
+dependencies = ["tomlkit==0.15.0"]
 
 [project.scripts]
 nox-py-standards = "nox_python_standards.cli:main"
@@ -33,8 +33,12 @@ dependency-group = "dev"
 authorized_version = "v0.15.14"
 
 # Shared fields are checked against the installed release. Explicit adoption:
-# nox-py-standards config sync; CI: nox-py-standards config check.
+# nox-py-standards sync; CI: nox-py-standards check.
 [tool.ruff]
+required-version = "==0.15.14"
+fix = false
+fix-only = false
+unsafe-fixes = false
 line-length = 88
 target-version = "py314"
 extend-exclude = ["build", "dist", ".venv"]
@@ -47,6 +51,10 @@ skip-magic-trailing-comma = false
 docstring-code-format = true
 
 [tool.ruff.lint]
+extend-safe-fixes = ["PT007"]
+extend-unsafe-fixes = []
+fixable = ["ALL"]
+unfixable = []
 select = ["A", "B", "DTZ", "E", "F", "I", "LOG", "N", "PGH", "PIE", "PT", "RET", "RUF", "SIM", "SLF", "T20", "UP", "W"]
 ignore = []
 extend-ignore = ["RET504", "SIM102", "SIM103", "SIM108", "SIM110"]

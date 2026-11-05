@@ -1,4 +1,12 @@
 {
+  "ruff.required-version": "==0.15.14",
+  "ruff.fix": false,
+  "ruff.fix-only": false,
+  "ruff.unsafe-fixes": false,
+  "ruff.lint.extend-safe-fixes": ["PT007"],
+  "ruff.lint.extend-unsafe-fixes": [],
+  "ruff.lint.fixable": ["ALL"],
+  "ruff.lint.unfixable": [],
   "ruff.line-length": 88,
   "ruff.format.quote-style": "double",
   "ruff.format.indent-style": "space",

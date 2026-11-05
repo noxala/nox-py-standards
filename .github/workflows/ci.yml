@@ -41,9 +41,16 @@ jobs:
       - name: Install package and locked dependencies
         run: uv sync --locked
       - name: Check Python standards configuration
-        run: uv run --locked nox-py-standards config check
-      - name: Check tools, headers, Ruff and Pyright
         run: uv run --locked nox-py-standards check
+      - name: Check formatting and lint
+        run: |
+          uv run --locked ruff format --check .
+          uv run --locked ruff check .
+      - name: Check types
+        env:
+          PYRIGHT_PYTHON_USE_BUNDLED_PYRIGHT: "1"
+          PYRIGHT_PYTHON_GLOBAL_NODE: "1"
+        run: uv run --locked pyright --threads 4
       - name: Run tests
         run: uv run --locked pytest
       - name: Verify wheel and sdist isolation

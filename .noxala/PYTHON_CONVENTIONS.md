@@ -1,8 +1,8 @@
 # Noxala Python conventions
 
 This versioned snapshot is owned by the installed `nox-python-standards` release.
-Run `nox-py-standards config check` to verify it, or explicitly run
-`nox-py-standards config sync` to adopt that release. Review and commit the diff.
+Run `nox-py-standards check` to verify it, or explicitly run
+`nox-py-standards sync` to adopt that release. Review and commit the diff.
 
 ## Executable policy
 
@@ -12,8 +12,10 @@ classification and approved test exceptions belong to the consumer. Tach alone
 generates its consumers' first-party package lists.
 
 Use the exact supported tool versions. Ruff approval is a manual decision:
-`config sync`, fixes, dependency installation and CI never grant approval.
-The Ruff repair sequence uses unsafe fixes only for the PT007-only step.
+`sync`, dependency installation and CI never grant approval.
+Keep exact tool pins locally. The checked Ruff settings approve only PT007 among
+otherwise-unsafe fixes (`extend-safe-fixes`); other unsafe fixes stay disabled.
+Repositories own tool invocation, Makefiles, hooks and source-header helpers.
 
 ## Written guidance
 
