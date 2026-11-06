@@ -18,8 +18,8 @@ Read the references relevant to your task:
   `src/nox_python_standards/resources/`; package metadata in `pyproject.toml`.
 - Code or packaging edits: run [validation](README.md#ci-and-package-development).
   Standards must pass before fixes; never auto-sync. Tests mirror modules in `test/`.
-- Consumer adoption: [installation](README.md#install-and-adopt); use only a merged,
-  immutable commit.
+- Consumer adoption: [installation](README.md#install-and-adopt); pin a published
+  version. Releases: [publishing](README.md#publishing).
 
 Start new PRs from current `master`; continue existing PRs on their branch.
 Request `denisgrenader`, enable auto-merge when supported, and require all quality checks.

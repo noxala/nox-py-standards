@@ -1,6 +1,11 @@
 name: CI
 
 on:
+  workflow_call:
+    inputs:
+      checkout-ref:
+        type: string
+        required: true
   pull_request:
     branches: [master]
   push:
@@ -10,7 +15,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ inputs.checkout-ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,6 +33,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: "24"

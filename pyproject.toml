@@ -4,11 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nox-python-standards"
-version = "0.2.0"
+version = "0.2.1"
 description = "Check and sync complete local copies of Noxala Python standards"
 readme = "README.md"
+license = "0BSD"
+license-files = ["LICENSE"]
 requires-python = ">=3.14.10,<3.15"
 dependencies = ["tomlkit==0.15.0"]
+
+[project.urls]
+Repository = "https://github.com/noxala/nox-python-standards"
+Issues = "https://github.com/noxala/nox-python-standards/issues"
 
 [project.scripts]
 nox-py-standards = "nox_python_standards.cli:main"
