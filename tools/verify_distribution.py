@@ -1,6 +1,7 @@
 # tools/verify_distribution.py
 from __future__ import annotations
 
+from email.parser import BytesParser
 import os
 from pathlib import Path
 import shutil
@@ -37,11 +38,31 @@ def verify(root: Path, temporary: Path) -> None:
     with zipfile.ZipFile(wheel) as archive:
         if not required <= {Path(name).name for name in archive.namelist()}:
             raise RuntimeError("Wheel missing policy resources")
+        metadata = BytesParser().parsebytes(
+            archive.read(
+                next(name for name in archive.namelist() if name.endswith("/METADATA"))
+            )
+        )
+        license_path = next(
+            name
+            for name in archive.namelist()
+            if name.endswith(".dist-info/licenses/LICENSE")
+        )
+        if (
+            metadata["License-Expression"] != "0BSD"
+            or metadata.get_all("License-File") != ["LICENSE"]
+            or archive.read(license_path) != (root / "LICENSE").read_bytes()
+        ):
+            raise RuntimeError("Wheel license metadata or text differs from 0BSD")
     extracted = temporary / "extracted"
     with tarfile.open(sdist) as archive:
         if not required <= {Path(member.name).name for member in archive.getmembers()}:
             raise RuntimeError("Sdist missing policy resources")
         archive.extractall(extracted, filter="data")
+    if (next(extracted.iterdir()) / "LICENSE").read_bytes() != (
+        root / "LICENSE"
+    ).read_bytes():
+        raise RuntimeError("Sdist license text differs from 0BSD")
     rebuilt = temporary / "rebuilt"
     run(
         [uv, "build", "--wheel", "--out-dir", str(rebuilt)],

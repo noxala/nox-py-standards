@@ -6,15 +6,15 @@ files. Each repository owns its Makefile, hooks, CI and native tool commands.
 ## Install and adopt
 
 Use the Python/uv versions in [pyproject.toml](pyproject.toml), Git, and Node.js
-on PATH for `check`. Authenticate private Git access before installing.
+on PATH for `check`.
 
-Add development dependencies with a reviewed, full merged commit SHA and the
+Add development dependencies with an exact PyPI version and the
 [approved tool versions](src/nox_python_standards/resources/versions.json):
 
 ```toml
 [dependency-groups]
 dev = [
-    "nox-python-standards @ git+https://github.com/noxala/nox-python-standards.git@<full-merged-sha>",
+    "nox-python-standards==0.2.1",
     "ruff==0.15.14",
     "pyright==1.1.411",
 ]
@@ -112,3 +112,24 @@ sync without tools and check with missing/present tools.
 
 Repository administrators should enable auto-merge and require `quality (Linux)`
 and `quality (macOS)`.
+
+## Publishing
+
+Licensed under [0BSD](LICENSE). Releases publish wheels and sdists to
+[PyPI](https://pypi.org/project/nox-python-standards/) through GitHub OIDC;
+no persistent PyPI token is needed.
+
+One-time setup: on your [PyPI publishing page](https://pypi.org/manage/account/publishing/),
+add a pending GitHub publisher with project `nox-python-standards`, owner `noxala`,
+repository `nox-python-standards`, workflow `publish.yml`, and environment `pypi`.
+The GitHub repository must have the matching `pypi` environment.
+
+For each release, update `project.version` and this installation example, run
+`uv lock`, and merge through the required checks. Publish a GitHub release tagged
+`v<version>` at that merged commit. [Publish](.github/workflows/publish.yml)
+reruns Linux/macOS quality checks, requires the tag to match the package version
+and belong to `master`, builds distributions, then uploads through the `pypi`
+environment. To publish an existing tag, run Publish manually from `master`
+with that tag. A failed upload can be retried before either file is published;
+after a partial upload, inspect PyPI before retrying. Published files cannot be
+overwritten; subsequent changes need a new version.
