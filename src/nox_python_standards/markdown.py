@@ -6,12 +6,12 @@ from html import unescape
 import re
 from urllib.parse import unquote
 
-_INLINE_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]*)\)")
+_LINK_RE = re.compile(r"\[([^\[\]]*)\](?:\(([^)]*)\)|\[([^\[\]]*)\])")
 _REFERENCE_DEFINITION_RE = re.compile(
-    r"^[ \t]{0,3}\[([^\]]+)\]:[ \t]*(.*)$",
+    r"^[ \t]{0,3}\[([^\[\]\n]+)\]:[ \t]*(.*)$",
     re.MULTILINE,
 )
-_REFERENCE_USAGE_RE = re.compile(r"\[([^\]]+)\]\[([^\]]*)\]")
+_BACKTICK_RUN_RE = re.compile(r"`+")
 _BACKTICK_RE = re.compile(r"`([^`\n]+)`")
 _ATX_HEADING_RE = re.compile(
     r"^[ \t]{0,3}#{1,6}[ \t]+(.+?)[ \t]*$",
@@ -26,22 +26,57 @@ class LocalLink:
     fragment: str | None
 
 
+def _blank(text: str) -> str:
+    """Hide syntax without joining lines or changing source offsets."""
+    return re.sub(r"[^\r\n]", " ", text)
+
+
 def without_fenced_code(text: str) -> str:
     rendered: list[str] = []
     fence: str | None = None
     for line in text.splitlines(keepends=True):
-        stripped = line.lstrip()
+        stripped = line.lstrip(" \t").rstrip("\r\n")
         if fence is None:
-            if stripped.startswith("```"):
-                fence = "```"
-                continue
-            if stripped.startswith("~~~"):
-                fence = "~~~"
-                continue
-            rendered.append(line)
+            opening = re.fullmatch(r"(`{3,}|~{3,})(.*)", stripped)
+            if opening is not None and not (
+                opening.group(1).startswith("`") and "`" in opening.group(2)
+            ):
+                fence = opening.group(1)
+                rendered.append(_blank(line))
+            else:
+                rendered.append(line)
             continue
-        if stripped.startswith(fence):
+        rendered.append(_blank(line))
+        if re.fullmatch(re.escape(fence[0]) + rf"{{{len(fence)},}}[ \t]*", stripped):
             fence = None
+    return "".join(rendered)
+
+
+def _is_escaped(text: str, index: int) -> bool:
+    preceding = text[:index]
+    return (len(preceding) - len(preceding.rstrip("\\"))) % 2 == 1
+
+
+def _without_code_spans(text: str) -> str:
+    rendered: list[str] = []
+    cursor = 0
+    while (opening := _BACKTICK_RUN_RE.search(text, cursor)) is not None:
+        rendered.append(text[cursor : opening.start()])
+        closing = re.search(
+            rf"(?<!`)`{{{len(opening.group())}}}(?!`)", text[opening.end() :]
+        )
+        if _is_escaped(text, opening.start()) or closing is None:
+            rendered.append(opening.group())
+            cursor = opening.end()
+            continue
+        end = opening.end() + closing.end()
+        if re.search(r"\n[ \t\r]*\n", text[opening.end() : end]):
+            rendered.append(opening.group())
+            cursor = opening.end()
+            continue
+        rendered.append(_blank(text[opening.start() : end]))
+        cursor = end
+    rendered.append(text[cursor:])
     return "".join(rendered)
 
 
@@ -93,34 +128,39 @@ def _parse_link_destination(
 
 
 def markdown_links(text: str) -> tuple[tuple[LocalLink, ...], tuple[str, ...]]:
+    """Resolve supported link occurrences; definitions alone are not navigation."""
     text_without_fences = without_fenced_code(text)
+    visible = _without_code_spans(text_without_fences)
     links: list[LocalLink] = []
     errors: list[str] = []
     definitions: dict[str, str] = {}
 
-    for match in _REFERENCE_DEFINITION_RE.finditer(text_without_fences):
-        label = _normalize_reference_label(match.group(1))
-        raw_destination = match.group(2)
-        if len(raw_destination.strip()) == 0:
-            errors.append(f"reference [{match.group(1)}] has empty link destination")
+    for match in _REFERENCE_DEFINITION_RE.finditer(visible):
+        label = text_without_fences[match.start(1) : match.end(1)]
+        raw_destination = text_without_fences[match.start(2) : match.end(2)]
+        definitions.setdefault(_normalize_reference_label(label), raw_destination)
+    visible = _REFERENCE_DEFINITION_RE.sub(lambda match: _blank(match.group()), visible)
+
+    for match in _LINK_RE.finditer(visible):
+        if _is_escaped(visible, match.start()) or re.search(
+            r"\n[ \t\r]*\n", match.group(1)
+        ):
             continue
-        definitions[label] = raw_destination
+        prefix = ""
+        if match.group(2) is not None:
+            raw_destination = text_without_fences[match.start(2) : match.end(2)]
+        else:
+            group = 3 if match.group(3) else 1
+            label = text_without_fences[match.start(group) : match.end(group)]
+            destination = definitions.get(_normalize_reference_label(label))
+            if destination is None:
+                errors.append(f"undefined link reference: [{label}]")
+                continue
+            raw_destination = destination
+            prefix = f"reference [{label}] has "
         link, error = _parse_link_destination(raw_destination)
         if error is not None:
-            errors.append(f"reference [{match.group(1)}] has {error}")
-        elif link is not None:
-            links.append(link)
-
-    for match in _REFERENCE_USAGE_RE.finditer(text_without_fences):
-        label = match.group(2) if len(match.group(2)) > 0 else match.group(1)
-        normalized_label = _normalize_reference_label(label)
-        if normalized_label not in definitions:
-            errors.append(f"undefined link reference: [{label}]")
-
-    for match in _INLINE_LINK_RE.finditer(text_without_fences):
-        link, error = _parse_link_destination(match.group(1))
-        if error is not None:
-            errors.append(error)
+            errors.append(prefix + error)
         elif link is not None:
             links.append(link)
 

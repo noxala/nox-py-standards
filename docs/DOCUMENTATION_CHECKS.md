@@ -44,14 +44,32 @@ untracked files; standard build, virtual-environment, and vendor directories are
 excluded by the shared [repository inventory](../src/nox_python_standards/repository.py).
 An empty document selection fails. Missing tracked documents also fail.
 
-Each selected document is checked for local inline and explicit/collapsed reference
-links, missing targets, paths leaving the repository, and Markdown heading fragments.
+Each selected document is checked for local links, missing targets, paths leaving
+the repository, and Markdown heading fragments. Supported navigation syntax is
+`[Guide](guide.md#details)`, `[Guide][route]`, and `[route][]`, with single-line
+reference definitions such as `[route]: guide.md#details "Optional title"`. Labels
+may span lines within a paragraph and contain inline code. Reference labels ignore
+case and normalize whitespace; the first definition wins. Only actual link
+occurrences contribute destinations: unused definitions are ignored, including
+their targets. A used
+undefined reference reports `undefined link reference`; an invalid destination
+reports a malformed link. Local image destinations are also checked.
+
+Backtick code spans (including multiline spans), backtick/tilde fenced blocks,
+and backslash-escaped opening brackets do not create links or reference usages.
+Fence closers must use the opening character, at least its run length, and no
+trailing text. Code examples and unused definitions cannot satisfy catalog coverage.
+If an older policy relied on a definition alone, add `[Guide][route]` or an inline
+link in the catalog or its cataloged subtree README.
+
 Heading anchors include duplicate suffixes such as `#details-1`; percent-encoded
-paths and fragments are decoded. Backtick and tilde fenced examples are ignored.
-External schemes, network URLs, and site-root URLs are skipped. Fragments on
-non-Markdown targets are not checked. The parser supports these repository guidance
-conventions, rather than implementing all CommonMark or rendered HTML features;
-use ordinary Markdown headings and explicit links for guidance routes.
+paths and fragments are decoded. External schemes, network URLs, and site-root
+URLs are skipped. Fragments on non-Markdown targets are not checked. The parser
+supports these repository guidance conventions, rather than all CommonMark or
+rendered HTML features. Shortcut references (`[route]`), nested bracket labels,
+balanced parentheses inside destinations, multiline definitions, indented code
+blocks, and HTML navigation are outside the supported subset. Use fenced examples,
+ordinary Markdown headings, and explicit links for guidance routes.
 
 `required` lists literal files or directories that must exist within the repository.
 Configuration paths cannot be absolute or contain `..`. Read documents must be

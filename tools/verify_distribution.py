@@ -25,9 +25,16 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
         'include = ["AGENTS.md", "docs/**/*.md"]\nrequired = ["AGENTS.md"]\n'
         "[[tool.nox-python-standards.docs.budgets]]\n"
         'include = ["AGENTS.md"]\nmax-words = 450\n'
+        "[[tool.nox-python-standards.docs.catalogs]]\n"
+        'path = "docs/README.md"\ninclude = ["docs/**/*.md"]\n'
     )
-    (consumer / "AGENTS.md").write_text("# Guide\n[Details](docs/GUIDE.md#details)\n")
+    (consumer / "AGENTS.md").write_text(
+        "# Guide\n[Details][guide]\n[guide]: docs/GUIDE.md#details\n"
+        "`[Example](absent.md)`\n"
+    )
     (consumer / "docs/GUIDE.md").write_text("# Guide\n## Details\n")
+    catalog = consumer / "docs/README.md"
+    catalog.write_text("# Catalog\n[guide][]\n[guide]: GUIDE.md#details\n")
     (consumer / "__init__.py").write_text('raise RuntimeError("consumer imported")\n')
     cli = str(environment / "bin/nox-docs-check")
     # Neither standards configuration nor consumer Ruff/Pyright is installed here.
@@ -40,6 +47,18 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
     run([cli, "--root", str(consumer)], cwd=consumer.parent, env=env)
     if any(path.read_bytes() != contents for path, contents in before.items()):
         raise RuntimeError("Documentation check modified consumer files")
+    catalog.write_text("# Catalog\n[unused]: GUIDE.md#details\n")
+    discovery_failure = subprocess.run(
+        [cli], cwd=consumer, env=env, text=True, capture_output=True, check=False
+    )
+    if (
+        discovery_failure.returncode != 1
+        or "docs/GUIDE.md is not represented" not in discovery_failure.stderr
+    ):
+        raise RuntimeError(f"Unused definition satisfied catalog: {discovery_failure}")
+    if catalog.read_text() != "# Catalog\n[unused]: GUIDE.md#details\n":
+        raise RuntimeError("Failed documentation check modified catalog")
+    catalog.write_bytes(before[catalog])
     guide = consumer / "AGENTS.md"
     guide.write_text("# Guide\n[Broken](absent.md)\n")
     failure = subprocess.run(

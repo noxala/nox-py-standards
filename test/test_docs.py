@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 _COMO_POLICY = """\
 [tool.nox-python-standards.docs]
 include = ["**/AGENTS.md", "ARCHITECTURE.md", "README.md", "docs/**/*.md"]
@@ -252,6 +254,57 @@ def test_catalog_requires_focused_documents_to_be_discoverable(tmp_path: Path) -
     result = _run_checker(tmp_path)
     assert result.returncode == 1
     assert "docs/design-docs/current-design.md is not represented" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "[unused-persistence]: architecture/persistence.md",
+        "`[Persistence](architecture/persistence.md)`",
+        "``[Persistence](architecture/persistence.md) with ` inside``",
+        "`[Persistence][ref]`\n[ref]: architecture/persistence.md",
+        "```md\n[Persistence](architecture/persistence.md)\n```",
+        "~~~md\n[Persistence](architecture/persistence.md)\n~~~",
+    ],
+)
+def test_catalog_requires_rendered_links(tmp_path: Path, replacement: str) -> None:
+    _write_valid_repository(tmp_path)
+    catalog = tmp_path / "docs/README.md"
+    catalog.write_text(
+        catalog.read_text().replace(
+            "- [Persistence](architecture/persistence.md)", replacement
+        )
+    )
+    before = catalog.read_bytes()
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert "docs/architecture/persistence.md is not represented" in result.stderr
+    assert catalog.read_bytes() == before
+
+
+@pytest.mark.parametrize("usage", ["[Persistence][guide]", "[guide][]"])
+def test_catalog_accepts_rendered_reference_links(tmp_path: Path, usage: str) -> None:
+    _write_valid_repository(tmp_path)
+    catalog = tmp_path / "docs/README.md"
+    catalog.write_text(
+        catalog.read_text().replace(
+            "- [Persistence](architecture/persistence.md)",
+            f"- {usage}\n\n[guide]: architecture/persistence.md#persistence",
+        )
+    )
+    result = _run_checker(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_unused_reference_cannot_index_a_cataloged_subtree(tmp_path: Path) -> None:
+    _write_valid_repository(tmp_path)
+    _write(
+        tmp_path / "docs/adr/README.md",
+        "# ADRs\n\n[unused]: 0001-old-decision.md\n",
+    )
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert "docs/adr/0001-old-decision.md is not represented" in result.stderr
 
 
 def test_maintained_root_guidance_must_be_cataloged(tmp_path: Path) -> None:
