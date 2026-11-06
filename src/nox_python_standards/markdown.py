@@ -1,7 +1,7 @@
 # src/nox_python_standards/markdown.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html import unescape
 import re
 from urllib.parse import unquote
@@ -24,6 +24,7 @@ class LocalLink:
     destination: str
     path_text: str
     fragment: str | None
+    is_image: bool = False
 
 
 def _blank(text: str) -> str:
@@ -127,7 +128,9 @@ def _parse_link_destination(
     )
 
 
-def markdown_links(text: str) -> tuple[tuple[LocalLink, ...], tuple[str, ...]]:
+def markdown_links(
+    text: str, *, reference_context: str | None = None
+) -> tuple[tuple[LocalLink, ...], tuple[str, ...]]:
     """Resolve supported link occurrences; definitions alone are not navigation."""
     text_without_fences = without_fenced_code(text)
     visible = _without_code_spans(text_without_fences)
@@ -135,9 +138,17 @@ def markdown_links(text: str) -> tuple[tuple[LocalLink, ...], tuple[str, ...]]:
     errors: list[str] = []
     definitions: dict[str, str] = {}
 
-    for match in _REFERENCE_DEFINITION_RE.finditer(visible):
-        label = text_without_fences[match.start(1) : match.end(1)]
-        raw_destination = text_without_fences[match.start(2) : match.end(2)]
+    definition_text = (
+        text_without_fences
+        if reference_context is None
+        else without_fenced_code(reference_context)
+    )
+    definition_visible = (
+        visible if reference_context is None else _without_code_spans(definition_text)
+    )
+    for match in _REFERENCE_DEFINITION_RE.finditer(definition_visible):
+        label = definition_text[match.start(1) : match.end(1)]
+        raw_destination = definition_text[match.start(2) : match.end(2)]
         definitions.setdefault(_normalize_reference_label(label), raw_destination)
     visible = _REFERENCE_DEFINITION_RE.sub(lambda match: _blank(match.group()), visible)
 
@@ -162,6 +173,12 @@ def markdown_links(text: str) -> tuple[tuple[LocalLink, ...], tuple[str, ...]]:
         if error is not None:
             errors.append(prefix + error)
         elif link is not None:
+            if (
+                match.start() > 0
+                and visible[match.start() - 1] == "!"
+                and not _is_escaped(visible, match.start() - 1)
+            ):
+                link = replace(link, is_image=True)
             links.append(link)
 
     return tuple(links), tuple(errors)

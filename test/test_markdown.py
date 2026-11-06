@@ -109,3 +109,24 @@ def test_backticks_cannot_hide_navigation_in_another_paragraph() -> None:
     links, errors = markdown_links("`open\n\n[Guide](guide.md)\n\nclose`")
     assert not errors
     assert [link.destination for link in links] == ["guide.md"]
+
+
+def test_link_fragments_resolve_references_in_the_full_document_context() -> None:
+    links, errors = markdown_links(
+        "[Guide][route]", reference_context="[route]: guide.md#details"
+    )
+    assert not errors
+    assert [link.destination for link in links] == ["guide.md#details"]
+
+
+@pytest.mark.parametrize("syntax", ["![Guide](guide.md)", "![Guide][route]"])
+def test_images_are_distinguished_from_navigation(syntax: str) -> None:
+    links, errors = markdown_links(syntax, reference_context="[route]: guide.md")
+    assert not errors
+    assert links[0].is_image
+
+
+def test_escaped_image_marker_preserves_a_normal_link() -> None:
+    links, errors = markdown_links(r"\![Guide](guide.md)")
+    assert not errors
+    assert not links[0].is_image

@@ -51,9 +51,9 @@ reference definitions such as `[route]: guide.md#details "Optional title"`. Labe
 may span lines within a paragraph and contain inline code. Reference labels ignore
 case and normalize whitespace; the first definition wins. Only actual link
 occurrences contribute destinations: unused definitions are ignored, including
-their targets. A used
-undefined reference reports `undefined link reference`; an invalid destination
-reports a malformed link. Local image destinations are also checked.
+their targets. A used undefined reference reports `undefined link reference`;
+an invalid destination reports a malformed link. Local image destinations are
+also checked.
 
 Backtick code spans (including multiline spans), backtick/tilde fenced blocks,
 and backslash-escaped opening brackets do not create links or reference usages.
@@ -74,6 +74,9 @@ ordinary Markdown headings, and explicit links for guidance routes.
 `required` lists literal files or directories that must exist within the repository.
 Configuration paths cannot be absolute or contain `..`. Read documents must be
 regular files without symlink components. All policy tables reject unknown keys.
+Configured catalog, router, and navigation source documents always receive link
+validation, even outside `include` or inside `exclude`. Their own links define
+the policy's reading routes. Other documents retain the explicit file selection.
 
 ## Budgets
 
@@ -84,6 +87,29 @@ splitting. A byte budget measures UTF-8 file bytes. Every budget rule must selec
 least one file. Top-level exclusions affect link checking only, so budget selection
 remains explicit.
 
+## Required navigation
+
+```toml
+[[tool.nox-python-standards.docs.navigation]]
+path = "AGENTS.md"
+targets = ["ARCHITECTURE.md#task-router", "docs/README.md"]
+```
+
+Each optional rule requires a rendered local link from `path` to every configured
+target. Both settings use repository-root-relative paths; actual Markdown link
+destinations still resolve relative to the source document. Targets must name
+existing `.md` files. Percent-encoded paths/fragments are decoded. A configured
+fragment requires that exact heading route; omitting it accepts a link to the
+document or any valid heading in it. Missing targets or headings fail even if the
+required route has not yet been written.
+
+Inline, explicit-reference, and collapsed-reference links count. External links,
+images, code examples, unused reference definitions, and prose routes do not.
+For example, deleting a route reports `AGENTS.md requires a navigation link to
+ARCHITECTURE.md#task-router`. Checking a route verifies target existence and its
+heading, but full target-body validation still depends on content selection.
+Empty target lists and malformed paths fail configuration validation.
+
 ## Catalogs
 
 ```toml
@@ -91,6 +117,7 @@ remains explicit.
 path = "docs/README.md"
 include = ["docs/**/*.md", "*.md"]
 exclude = ["AGENTS.md", "README.md", "ARCHITECTURE.md", "docs/generated/**"]
+require-content-check = true  # optional; default false
 ```
 
 Every selected file except the catalog itself must be linked directly from `path`,
@@ -98,6 +125,29 @@ or from a sibling `README.md` that is directly linked by the catalog. Catalog ru
 use their own selection, independent of top-level exclusions. Historical ADR bodies
 can therefore remain cataloged while their old links are excluded from content checks.
 The catalog must exist; this rule does not generate or repair it.
+
+With `require-content-check = true`, every catalog-selected document must receive
+link validation or match a top-level `docs.exclude` pattern. This detects maintained
+guides omitted from `docs.include`. The diagnostic names the document and catalog
+and asks for inclusion or an explicit exemption. Catalog rules with this option
+must select at least one member besides the catalog itself. Catalog discovery and
+content validation remain independent: excluding an ADR body from content checking
+does not remove its discovery requirement.
+
+For a COMO-style policy, start with broader root coverage and explicit historical
+exclusions, then add the catalog, navigation, and router rules shown here:
+
+```toml
+[tool.nox-python-standards.docs]
+include = ["**/AGENTS.md", "*.md", "docs/**/*.md", ".noxala/*.md"]
+exclude = ["docs/generated/**", "docs/adr/[0-9]*.md"]
+required = ["AGENTS.md", "README.md", "ARCHITECTURE.md", "docs/README.md"]
+```
+
+The immediate consumer fix for a cataloged `CONTRIBUTING.md` is adding `*.md` to
+top-level content selection. Its broken links are then checked. The coverage option
+prevents future root guides from falling through the same gap; it does not silently
+change consumer selections. Generated-report freshness stays consumer-owned.
 
 ## Metadata and source paths
 
@@ -116,8 +166,9 @@ at least one existing repository path in inline backticks. `path-sections` requi
 an exact level-two heading and at least one existing path in its section.
 Paths resolve from the repository root, not the document directory. Tokens such as
 `test/example.py::test_case` resolve to the file; wildcard/template tokens are
-skipped. Fenced examples do not satisfy metadata or sections. Every metadata rule
-must select at least one document.
+skipped. Recognized path tokens contain `/` or end in `.py`/`.md`; use `./Makefile`
+or `./assets` for other root files or directories. Fenced examples do not satisfy
+metadata or sections. Every metadata rule must select at least one document.
 
 ## Task routers
 
@@ -126,13 +177,27 @@ must select at least one document.
 path = "ARCHITECTURE.md"
 section = "Task router"
 columns = ["Task", "Read", "Implementation authority"]
+link-columns = ["Read"]  # optional
+path-columns = ["Implementation authority"]  # optional
 ```
 
 The document and exact level-two section must exist. Its pipe table must have the
 declared header, at least one task row, and the expected number of nonempty cells.
-Repository path tokens in that section must exist. Links are validated through the
-top-level document selection; include router documents there. This format does not
-support escaped pipes inside table cells.
+Repository path tokens in that section must exist. Optional `link-columns` require
+at least one local link to an existing `.md` document in each named cell on every
+task row. Images, directories, source-file links, prose, and code tokens cannot
+substitute. Reference links can use definitions elsewhere in the document. Linked
+fragments must exist.
+
+Optional `path-columns` independently require repository paths in backticks in
+each named cell. Existing files and directories are accepted; `file.py::symbol`
+resolves at file level. All declared paths must exist, including paths in other
+columns. A link or path in another cell cannot satisfy a column's requirement.
+Diagnostics identify the source, section, task row (starting at 1), and column.
+Configured column names must be distinct members of `columns`; explicitly empty
+column lists fail. Omitting both options retains the compact shape-only policy.
+Router documents always receive link validation. The pipe-table format does not
+support escaped pipes inside cells.
 
 ## Ownership and verification
 

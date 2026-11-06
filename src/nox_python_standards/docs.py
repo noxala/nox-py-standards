@@ -4,7 +4,13 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from nox_python_standards.docs_config import Catalog, DocsConfiguration, Router
+from nox_python_standards.docs_config import (
+    Catalog,
+    DocsConfiguration,
+    Navigation,
+    Router,
+    Selection,
+)
 from nox_python_standards.markdown import (
     heading_anchors,
     markdown_links,
@@ -52,6 +58,29 @@ class _Documents:
                 result.add(self.target(source, link.path_text))
         return result
 
+    def document_links(
+        self, source: Path, text: str | None = None
+    ) -> set[tuple[Path, str | None]]:
+        context = self.text(source)
+        links, _errors = markdown_links(
+            context if text is None else text,
+            reference_context=context if text is not None else None,
+        )
+        result: set[tuple[Path, str | None]] = set()
+        for link in links:
+            if link.is_image:
+                continue
+            try:
+                target = self.target(source, link.path_text)
+            except StandardsError:
+                continue
+            if target.suffix.lower() != ".md" or not (self.root / target).is_file():
+                continue
+            if link.fragment and link.fragment not in self.anchors(target):
+                continue
+            result.add((target, link.fragment))
+        return result
+
 
 def _check_links(documents: _Documents, source: Path) -> list[str]:
     links, parse_errors = markdown_links(documents.text(source))
@@ -75,12 +104,32 @@ def _check_links(documents: _Documents, source: Path) -> list[str]:
     return errors
 
 
-def _check_catalog(documents: _Documents, rule: Catalog) -> list[str]:
+def _check_catalog(
+    documents: _Documents,
+    rule: Catalog,
+    checked: set[Path],
+    content_selection: Selection,
+) -> list[str]:
     catalog = Path(rule.path)
     targets = documents.links(catalog)
     errors: list[str] = []
-    for path in documents.paths:
-        if path == catalog or not rule.selection.matches(path) or path in targets:
+    selected = [path for path in documents.paths if rule.selection.matches(path)]
+    if rule.require_content_check and not any(path != catalog for path in selected):
+        errors.append(
+            f"{catalog} catalog include patterns matched no files "
+            "other than the catalog"
+        )
+    for path in selected:
+        if (
+            rule.require_content_check
+            and path not in checked
+            and not content_selection.is_excluded(path)
+        ):
+            errors.append(
+                f"{path} selected by {catalog} has no content check; "
+                "add it to docs.include or explicitly exempt it in docs.exclude"
+            )
+        if path == catalog or path in targets:
             continue
         index = path.parent / "README.md"
         if (
@@ -94,6 +143,36 @@ def _check_catalog(documents: _Documents, rule: Catalog) -> list[str]:
             f"{path} is not represented by {catalog} directly or through a "
             "cataloged subtree README.md"
         )
+    return errors
+
+
+def _check_navigation(documents: _Documents, rule: Navigation) -> list[str]:
+    source = Path(rule.path)
+    links = documents.document_links(source)
+    errors: list[str] = []
+    for expected in rule.targets:
+        path = documents.root / expected.path
+        destination = expected.path + (
+            f"#{expected.fragment}" if expected.fragment else ""
+        )
+        if not path.resolve().is_relative_to(documents.root) or not path.is_file():
+            errors.append(
+                f"{source} navigation target must be an existing local document: "
+                f"{destination}"
+            )
+            continue
+        target = path.resolve().relative_to(documents.root)
+        if expected.fragment and expected.fragment not in documents.anchors(target):
+            errors.append(
+                f"{source} navigation target has missing heading fragment: "
+                f"{destination}"
+            )
+        if not any(
+            actual == target
+            and (expected.fragment is None or fragment == expected.fragment)
+            for actual, fragment in links
+        ):
+            errors.append(f"{source} requires a navigation link to {destination}")
     return errors
 
 
@@ -122,7 +201,7 @@ def _check_router(documents: _Documents, rule: Router) -> list[str]:
         stripped = line.strip()
         if not stripped.startswith("|") or not stripped.endswith("|"):
             continue
-        cells = tuple(cell.strip() for cell in stripped.strip("|").split("|"))
+        cells = tuple(cell.strip() for cell in stripped[1:-1].split("|"))
         if all(re.fullmatch(r":?-+:?", cell) for cell in cells):
             continue
         rows.append(cells)
@@ -132,9 +211,20 @@ def _check_router(documents: _Documents, rule: Router) -> list[str]:
     tasks = rows[1:]
     if not tasks:
         errors.append(f"{label} has no task rows")
-    for cells in tasks:
+    for row, cells in enumerate(tasks, start=1):
         if len(cells) != len(rule.columns) or any(not cell for cell in cells):
             errors.append(f"{label} contains a row with missing or empty cells")
+            continue
+        for column, cell in zip(rule.columns, cells, strict=True):
+            cell_label = f"{label} row {row} column '{column}'"
+            if column in rule.link_columns and not documents.document_links(
+                source, cell
+            ):
+                errors.append(
+                    f"{cell_label} must contain a local Markdown document link"
+                )
+            if column in rule.path_columns:
+                errors.extend(_check_paths(documents.root, cell_label, cell))
     # Router cells may contain prose and links without a literal source path.
     if repo_paths_from_code_tokens(section):
         errors.extend(_check_paths(documents.root, label, section))
@@ -159,7 +249,11 @@ def documentation_errors(
     ]
     if not selected:
         errors.append("Documentation include patterns matched no files")
-    for path in selected:
+    checked = set(selected)
+    checked.update(Path(rule.path) for rule in configuration.catalogs)
+    checked.update(Path(rule.path) for rule in configuration.routers)
+    checked.update(Path(rule.path) for rule in configuration.navigation)
+    for path in sorted(checked):
         errors.extend(_check_links(documents, path))
     for rule in configuration.budgets:
         matches = [path for path in documents.paths if rule.selection.matches(path)]
@@ -180,7 +274,11 @@ def documentation_errors(
                         "the local budget."
                     )
     for catalog in configuration.catalogs:
-        errors.extend(_check_catalog(documents, catalog))
+        errors.extend(
+            _check_catalog(documents, catalog, checked, configuration.documents)
+        )
+    for navigation in configuration.navigation:
+        errors.extend(_check_navigation(documents, navigation))
     for metadata in configuration.metadata:
         matches = [path for path in documents.paths if metadata.selection.matches(path)]
         if not matches:
