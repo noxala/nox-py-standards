@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nox-python-standards"
-version = "0.3.0"
+version = "0.4.0"
 description = "Check and sync complete local copies of Noxala Python standards"
 readme = "README.md"
 license = "0BSD"

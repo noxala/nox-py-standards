@@ -174,4 +174,12 @@ def test_version_does_not_need_consumer_policy(
     with pytest.raises(SystemExit) as result:
         main(["--version"])
     assert result.value.code == 0
-    assert "0.3.0" in capsys.readouterr().out
+    assert "0.4.0" in capsys.readouterr().out
+
+
+def test_complete_compact_documentation_example(docs_consumer: Path) -> None:
+    policy = Path(__file__).resolve().parents[1] / "docs/examples/compact.toml"
+    _write(docs_consumer, "pyproject.toml", policy.read_text())
+    before = _snapshot(docs_consumer)
+    assert main([]) == 0
+    assert _snapshot(docs_consumer) == before

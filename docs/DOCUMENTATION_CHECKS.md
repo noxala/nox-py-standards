@@ -5,6 +5,14 @@
 only `check` and `sync`. Repositories own their Makefiles, hooks, CI, and generated
 architecture reports.
 
+Complete policy fragments are available for a [compact repository](examples/compact.toml)
+and a [progressive-disclosure layout](examples/progressive.toml) like COMO's. Tests
+exercise these exact files, including weakened navigation, catalog, workflow, and
+root-link cases. They are included with the source distribution. Copy the docs
+policy into the consuming `pyproject.toml` and adapt its paths, columns, full status
+values, budgets, and entry-point patterns. These examples are documentation;
+installation and `sync` do not adopt them automatically.
+
 ## Adoption
 
 Pin a published standards release and configure checks in the consumer's
@@ -333,3 +341,32 @@ with tests covering its richer policy and nox-tach's compact guide policy.
 This package checks its own documentation in CI. Tests cover configurable rules,
 failure diagnostics, configuration validation, read-only behavior, and both installed
 wheel forms; consumers retain only their invocation and any truly local generators.
+
+## Upgrading from 0.3.0
+
+0.4.0 adds optional required navigation, router link/source columns, catalog table
+and content-coverage rules, workflow accepted values, and independent path groups.
+Existing compact policies and simple link-list catalogs retain their behavior when
+these settings are omitted. Two validation corrections can expose existing issues:
+
+- Unused reference definitions and code examples no longer count as navigation.
+  Add a real inline/reference link wherever a catalog relied on a declaration alone.
+- Configured catalog and router sources now receive link validation even when omitted
+  from general content selection or explicitly excluded. Repair their broken links;
+  historical bodies can remain separately indexed and excluded.
+
+After the release is published, update the exact package pin to `0.4.0` and refresh
+the consumer lockfile. Run `nox-py-standards check` and the consumer's docs check.
+Adopt the new optional rules explicitly, starting with real reading routes and
+broader maintained-root Markdown coverage. Review local status qualifiers, category
+authority roles, and directory entry-point choices before enabling stricter rules.
+Tool pins, manual Ruff approval, the `check/sync` contract, and generated-map freshness
+ownership are unchanged.
+
+The 0.4.0 preparation must merge before a `v0.4.0` release is published through the
+existing [publishing procedure](../README.md#publishing). A preparation PR or ordinary
+merge does not publish to PyPI. Follow the Publish run through its Linux/macOS
+quality, build/metadata, and PyPI upload jobs; confirm the published distributions
+before updating consumers. COMO rollout is tracked separately in
+[issue #10](https://github.com/noxala/nox-python-standards/issues/10), including the
+pin/lockfile, complete local policy, and representative failure checks.

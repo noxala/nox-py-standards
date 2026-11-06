@@ -219,6 +219,15 @@ def verify(root: Path, temporary: Path) -> None:
     with tarfile.open(sdist) as archive:
         if not required <= {Path(member.name).name for member in archive.getmembers()}:
             raise RuntimeError("Sdist missing policy resources")
+        documentation = {
+            "docs/DOCUMENTATION_CHECKS.md",
+            "docs/examples/compact.toml",
+            "docs/examples/progressive.toml",
+        }
+        if not documentation <= {
+            member.name.partition("/")[2] for member in archive.getmembers()
+        }:
+            raise RuntimeError("Sdist missing documentation policy examples")
         archive.extractall(extracted, filter="data")
     if (next(extracted.iterdir()) / "LICENSE").read_bytes() != (
         root / "LICENSE"

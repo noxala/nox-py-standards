@@ -1,0 +1,13 @@
+# Documentation policy fragment for a small repository. Review local paths first.
+[tool.nox-python-standards.docs]
+include = ["*.md", "**/AGENTS.md", "docs/**/*.md", ".noxala/*.md"]
+exclude = ["docs/generated/**"]
+required = ["AGENTS.md", "README.md"]
+
+[[tool.nox-python-standards.docs.budgets]]
+include = ["AGENTS.md"]
+max-words = 450
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "README.md"
+targets = ["AGENTS.md"]
