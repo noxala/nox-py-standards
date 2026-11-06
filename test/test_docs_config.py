@@ -139,3 +139,56 @@ def test_coverage_option_requires_a_boolean(value: object) -> None:
                 ],
             }
         )
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"typo": True},
+        {"columns": []},
+        {"columns": ["Doc", "Doc"]},
+        {"document-column": "Missing"},
+        {"document-column": 1},
+        {"section": ""},
+        {"section": None},
+        {"section": 1},
+        {"required-columns": ["Missing"]},
+        {"required-columns": "Doc"},
+        {"required-columns": ["Doc", "Doc"]},
+        {"path-columns": []},
+        {"path-columns": ["Missing"]},
+        {"accepted-values": {}},
+        {"accepted-values": []},
+        {"accepted-values": {"Missing": ["Current"]}},
+        {"accepted-values": {"Status": []}},
+        {"accepted-values": {"Status": "Current"}},
+        {"accepted-values": {"Status": [1]}},
+    ],
+)
+def test_invalid_catalog_table_settings_are_actionable(
+    settings: dict[str, object],
+) -> None:
+    rule: dict[str, object] = {"columns": ["Doc", "Status"], "document-column": "Doc"}
+    rule.update(settings)
+    with pytest.raises(StandardsError, match=r"docs.catalogs\[0\].tables\[0\]"):
+        DocsConfiguration.create(
+            {
+                "include": ["*.md"],
+                "catalogs": [
+                    {"path": "README.md", "include": ["*.md"], "tables": [rule]}
+                ],
+            }
+        )
+
+
+@pytest.mark.parametrize("tables", [[], {}, [None], [{}]])
+def test_catalog_table_rules_cannot_be_empty_or_malformed(tables: object) -> None:
+    with pytest.raises(StandardsError, match=r"docs.catalogs\[0\].tables"):
+        DocsConfiguration.create(
+            {
+                "include": ["*.md"],
+                "catalogs": [
+                    {"path": "README.md", "include": ["*.md"], "tables": tables}
+                ],
+            }
+        )

@@ -100,23 +100,113 @@ class Budget:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class CatalogTable:
+    section: str | None
+    columns: tuple[str, ...]
+    document_column: str
+    required_columns: tuple[str, ...]
+    path_columns: tuple[str, ...]
+    accepted_values: tuple[tuple[str, tuple[str, ...]], ...]
+
+    @classmethod
+    def create(cls, value: object, label: str) -> CatalogTable:
+        data = _table(
+            value,
+            label,
+            {
+                "section",
+                "columns",
+                "document-column",
+                "required-columns",
+                "path-columns",
+                "accepted-values",
+            },
+        )
+        columns = _strings(data.get("columns"), f"{label}.columns")
+        if len(set(columns)) != len(columns):
+            raise StandardsError(f"{label}.columns: duplicate column names")
+        section = data.get("section")
+        if "section" in data and (not isinstance(section, str) or not section.strip()):
+            raise StandardsError(f"{label}.section: expected a nonempty heading")
+        document_column = data.get("document-column")
+        if not isinstance(document_column, str) or document_column not in columns:
+            raise StandardsError(
+                f"{label}.document-column: expected a name from columns"
+            )
+        required = (
+            _column_names(
+                data["required-columns"],
+                columns,
+                f"{label}.required-columns",
+                nonempty=False,
+            )
+            if "required-columns" in data
+            else columns
+        )
+        paths = (
+            _column_names(data["path-columns"], columns, f"{label}.path-columns")
+            if "path-columns" in data
+            else ()
+        )
+        values: dict[str, object] = {}
+        if "accepted-values" in data:
+            values = _table(
+                data["accepted-values"], f"{label}.accepted-values", set(columns)
+            )
+            if not values:
+                raise StandardsError(
+                    f"{label}.accepted-values: require at least one column"
+                )
+        return cls(
+            section=cast(str | None, section),
+            columns=columns,
+            document_column=document_column,
+            required_columns=required,
+            path_columns=paths,
+            accepted_values=tuple(
+                (column, _strings(choices, f"{label}.accepted-values.{column}"))
+                for column, choices in values.items()
+            ),
+        )
+
+
+def _column_names(
+    value: object, columns: tuple[str, ...], label: str, *, nonempty: bool = True
+) -> tuple[str, ...]:
+    names = _strings(value, label, nonempty=nonempty)
+    if len(set(names)) != len(names) or any(name not in columns for name in names):
+        raise StandardsError(f"{label}: require distinct names from columns")
+    return names
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Catalog:
     path: str
     selection: Selection
     require_content_check: bool
+    tables: tuple[CatalogTable, ...]
 
     @classmethod
     def create(cls, value: object, label: str) -> Catalog:
         data = _table(
-            value, label, {"path", "include", "exclude", "require-content-check"}
+            value,
+            label,
+            {"path", "include", "exclude", "require-content-check", "tables"},
         )
         coverage = data.get("require-content-check", False)
         if type(coverage) is not bool:
             raise StandardsError(f"{label}.require-content-check: expected a boolean")
+        table_rules = _rules(data, "tables", label=label)
+        if "tables" in data and not table_rules:
+            raise StandardsError(f"{label}.tables: require at least one table rule")
         return cls(
             path=_path(data.get("path"), f"{label}.path"),
             selection=Selection.create(data, label),
             require_content_check=coverage,
+            tables=tuple(
+                CatalogTable.create(rule, f"{label}.tables[{index}]")
+                for index, rule in enumerate(table_rules)
+            ),
         )
 
 
@@ -216,14 +306,11 @@ class Router:
             raise StandardsError(f"{label}.columns: duplicate column names")
         required_columns: dict[str, tuple[str, ...]] = {}
         for key in ("link-columns", "path-columns"):
-            names = _strings(data[key], f"{label}.{key}") if key in data else ()
-            if len(set(names)) != len(names) or any(
-                name not in columns for name in names
-            ):
-                raise StandardsError(
-                    f"{label}.{key}: require distinct names from columns"
-                )
-            required_columns[key] = names
+            required_columns[key] = (
+                _column_names(data[key], columns, f"{label}.{key}")
+                if key in data
+                else ()
+            )
         return cls(
             path=_path(data.get("path"), f"{label}.path"),
             section=section,
@@ -233,10 +320,10 @@ class Router:
         )
 
 
-def _rules(data: dict[str, object], key: str) -> list[object]:
+def _rules(data: dict[str, object], key: str, *, label: str = _PREFIX) -> list[object]:
     value = data.get(key, [])
     if not isinstance(value, list):
-        raise StandardsError(f"{_PREFIX}.{key}: expected an array of tables")
+        raise StandardsError(f"{label}.{key}: expected an array of tables")
     return cast(list[object], value)
 
 

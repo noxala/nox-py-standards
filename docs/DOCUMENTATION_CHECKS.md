@@ -149,6 +149,68 @@ top-level content selection. Its broken links are then checked. The coverage opt
 prevents future root guides from falling through the same gap; it does not silently
 change consumer selections. Generated-report freshness stays consumer-owned.
 
+### Catalog tables
+
+Table semantics are optional. Add one or more `catalogs.tables` rules to a catalog
+that needs document-selection metadata:
+
+```toml
+[[tool.nox-python-standards.docs.catalogs.tables]]
+columns = ["Document", "Status", "Read when", "Authority"]
+document-column = "Document"
+path-columns = ["Authority"]  # optional
+
+[tool.nox-python-standards.docs.catalogs.tables.accepted-values]
+Status = [
+    "Current",
+    "Planned (not implemented)",
+    "Generated (projection only)",
+    "Decision history",
+]
+```
+
+Each rule checks every pipe table in its scope. Omitting `section` checks all
+tables in the catalog, including tables under different category headings. Setting
+`section = "Architecture"` limits a rule to that exact level-two section, including
+its subsections. Use separate section rules when categories have different columns
+or source-path requirements. For example, current architecture entries may require
+source paths while a decision-history table uses a prose authority description.
+All configured sections must exist and contain at least one table.
+
+Tables must have the exact configured header and at least one document row.
+`required-columns` defaults to every configured column; set it explicitly to permit
+empty optional cells. An empty list permits empty cells except where document-link,
+path, or accepted-value rules independently require content. `document-column`
+always requires a real local Markdown document link in each row. Link destinations
+resolve from the catalog, and reference definitions may live elsewhere in it.
+Images, directories, source-file links, code examples, and prose do not substitute.
+
+Optional `path-columns` require existing repository paths in backticks in every
+named cell, using the metadata path conventions below. Files and directories are
+accepted, and `file.py::symbol` resolves at file level. `accepted-values` maps any
+configured column to its accepted full cell values, after trimming outer whitespace.
+Matching is case- and formatting-sensitive. Qualifiers are preserved: `Planned`
+does not match `Planned (not implemented)`. Status vocabulary and all column names
+belong to the consumer; the checker supplies no default status meanings.
+
+With table rules enabled, catalog discovery uses links in the document columns of
+the checked tables. A selected member cannot bypass metadata by moving its link
+into an ordinary list or another cell. Indirection through a cataloged subtree
+README still works; table rules apply to that README only if it has its own catalog
+rule. Without `tables`, a simple link-list catalog retains its original behavior.
+
+Missing columns, empty required cells, absent document links, invalid paths, and
+unsupported values identify the catalog, optional section, table, row, and column
+where applicable. Table and row numbers start at 1 within the rule's scope. Missing
+tables and empty tables fail explicitly. Unknown or duplicate column references,
+empty table-rule arrays, and malformed accepted-value settings fail configuration
+validation. A header/delimiter row is required; delimiter cells use at least three
+hyphens with optional alignment colons. Cells are single-line, and each table line
+must contain a pipe; outer pipes are optional for multi-column lines. Pipes inside
+cells (including escaped pipes or pipes in code spans) are
+outside the supported table subset. Fenced and inline-code table examples do not
+count as tables.
+
 ## Metadata and source paths
 
 ```toml

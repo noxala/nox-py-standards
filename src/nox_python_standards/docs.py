@@ -6,6 +6,7 @@ import re
 
 from nox_python_standards.docs_config import (
     Catalog,
+    CatalogTable,
     DocsConfiguration,
     Navigation,
     Router,
@@ -15,6 +16,7 @@ from nox_python_standards.markdown import (
     heading_anchors,
     markdown_links,
     markdown_section,
+    markdown_tables,
     metadata_value,
     repo_paths_from_code_tokens,
 )
@@ -111,8 +113,17 @@ def _check_catalog(
     content_selection: Selection,
 ) -> list[str]:
     catalog = Path(rule.path)
-    targets = documents.links(catalog)
+    targets: set[Path] = set()
     errors: list[str] = []
+    if rule.tables:
+        for table_rule in rule.tables:
+            table_targets, table_errors = _check_catalog_tables(
+                documents, catalog, table_rule
+            )
+            targets.update(table_targets)
+            errors.extend(table_errors)
+    else:
+        targets = documents.links(catalog)
     selected = [path for path in documents.paths if rule.selection.matches(path)]
     if rule.require_content_check and not any(path != catalog for path in selected):
         errors.append(
@@ -144,6 +155,59 @@ def _check_catalog(
             "cataloged subtree README.md"
         )
     return errors
+
+
+def _check_catalog_tables(
+    documents: _Documents, source: Path, rule: CatalogTable
+) -> tuple[set[Path], list[str]]:
+    text = documents.text(source)
+    label = str(source)
+    if rule.section is not None:
+        label += f" section '{rule.section}'"
+        section = markdown_section(text, rule.section)
+        if section is None:
+            return set(), [f"{source} is missing '## {rule.section}'"]
+        text = section
+    tables = markdown_tables(text)
+    if not tables:
+        return set(), [
+            f"{label} has no catalog tables; requires columns: "
+            f"{', '.join(rule.columns)}"
+        ]
+    targets: set[Path] = set()
+    errors: list[str] = []
+    for number, table in enumerate(tables, start=1):
+        table_label = f"{label} table {number}"
+        if table.columns != rule.columns:
+            errors.append(f"{table_label} requires columns: {', '.join(rule.columns)}")
+            continue
+        if not table.rows:
+            errors.append(f"{table_label} has no document rows")
+        for row, cells in enumerate(table.rows, start=1):
+            row_label = f"{table_label} row {row}"
+            if len(cells) != len(rule.columns):
+                errors.append(f"{row_label} contains missing or extra cells")
+                continue
+            for column, cell in zip(rule.columns, cells, strict=True):
+                cell_label = f"{row_label} column '{column}'"
+                if column in rule.required_columns and not cell:
+                    errors.append(f"{cell_label} must be nonempty")
+                if column == rule.document_column:
+                    links = documents.document_links(source, cell)
+                    if not links:
+                        errors.append(
+                            f"{cell_label} must contain a local Markdown document link"
+                        )
+                    targets.update(target for target, _fragment in links)
+                if column in rule.path_columns:
+                    errors.extend(_check_paths(documents.root, cell_label, cell))
+                for name, choices in rule.accepted_values:
+                    if column == name and cell not in choices:
+                        errors.append(
+                            f"{cell_label} has unsupported value {cell!r}; "
+                            f"expected one of: {', '.join(choices)}"
+                        )
+    return targets, errors
 
 
 def _check_navigation(documents: _Documents, rule: Navigation) -> list[str]:
