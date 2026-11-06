@@ -14,7 +14,7 @@ Add development dependencies with an exact PyPI version and the
 ```toml
 [dependency-groups]
 dev = [
-    "nox-python-standards==0.2.1",
+    "nox-python-standards==0.3.0",
     "ruff==0.15.14",
     "pyright==1.1.411",
 ]
@@ -52,6 +52,14 @@ dependencies. Repositories control their normal tool execution and environment.
 
 From 0.1: `config check/sync` becomes `check/sync`; other commands are removed.
 `check` no longer runs source lint, formatting, headers, typing or tests.
+
+## Documentation checks
+
+The same distribution also ships `nox-docs-check`, a separate read-only command
+for documentation links, guidance budgets, catalogs, metadata, and task routers.
+Repositories declare their own rules under `[tool.nox-python-standards.docs]`.
+See [configuration and adoption](docs/DOCUMENTATION_CHECKS.md). It does not change
+the `nox-py-standards check/sync` command contract or run consumer tools.
 
 ## Native fix policy
 
@@ -99,6 +107,7 @@ For code or packaging changes here:
 ```sh
 uv sync --locked
 uv run --locked nox-py-standards check
+uv run --locked nox-docs-check
 uv run --locked ruff format --check .
 uv run --locked ruff check .
 uv run --locked pyright --threads 4

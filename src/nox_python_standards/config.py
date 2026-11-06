@@ -145,7 +145,7 @@ class Configuration:
         settings = table(
             tool.get("nox-python-standards", {}), "tool.nox-python-standards"
         )
-        if set(settings) - {"sources", "dependency-group", "ruff"}:
+        if set(settings) - {"sources", "dependency-group", "ruff", "docs"}:
             raise StandardsError("Unclassified tool.nox-python-standards setting")
         source_values = settings.get("sources")
         if not strings(source_values) or not source_values:
