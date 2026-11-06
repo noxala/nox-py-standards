@@ -16,6 +16,46 @@ def run(arguments: list[str], *, cwd: Path, env: dict[str, str]) -> None:
     subprocess.run(arguments, cwd=cwd, env=env, check=True)
 
 
+def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> None:
+    consumer.mkdir()
+    run(["git", "init", "--quiet"], cwd=consumer, env=env)
+    (consumer / "docs").mkdir()
+    (consumer / "pyproject.toml").write_text(
+        "[tool.nox-python-standards.docs]\n"
+        'include = ["AGENTS.md", "docs/**/*.md"]\nrequired = ["AGENTS.md"]\n'
+        "[[tool.nox-python-standards.docs.budgets]]\n"
+        'include = ["AGENTS.md"]\nmax-words = 450\n'
+    )
+    (consumer / "AGENTS.md").write_text("# Guide\n[Details](docs/GUIDE.md#details)\n")
+    (consumer / "docs/GUIDE.md").write_text("# Guide\n## Details\n")
+    (consumer / "__init__.py").write_text('raise RuntimeError("consumer imported")\n')
+    cli = str(environment / "bin/nox-docs-check")
+    # Neither standards configuration nor consumer Ruff/Pyright is installed here.
+    before = {
+        path: path.read_bytes()
+        for path in consumer.rglob("*")
+        if path.is_file() and ".git" not in path.parts
+    }
+    run([cli], cwd=consumer / "docs", env=env)
+    run([cli, "--root", str(consumer)], cwd=consumer.parent, env=env)
+    if any(path.read_bytes() != contents for path, contents in before.items()):
+        raise RuntimeError("Documentation check modified consumer files")
+    guide = consumer / "AGENTS.md"
+    guide.write_text("# Guide\n[Broken](absent.md)\n")
+    failure = subprocess.run(
+        [str(environment / "bin/python"), "-m", "nox_python_standards.docs_cli"],
+        cwd=consumer,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if failure.returncode != 1 or "broken link: absent.md" not in failure.stderr:
+        raise RuntimeError(f"Installed documentation check did not fail: {failure}")
+    if guide.read_text() != "# Guide\n[Broken](absent.md)\n":
+        raise RuntimeError("Failed documentation check modified guide")
+
+
 def verify(root: Path, temporary: Path) -> None:
     uv = shutil.which("uv")
     if uv is None:
@@ -69,25 +109,29 @@ def verify(root: Path, temporary: Path) -> None:
         cwd=next(extracted.iterdir()),
         env=env,
     )
-    environment = temporary / "environment"
-    run(
-        [uv, "venv", "--python", sys.executable, str(environment)],
-        cwd=temporary,
-        env=env,
-    )
+    for index, distribution in enumerate((wheel, next(rebuilt.glob("*.whl")))):
+        environment = temporary / f"environment-{index}"
+        run(
+            [uv, "venv", "--python", sys.executable, str(environment)],
+            cwd=temporary,
+            env=env,
+        )
+        run(
+            [
+                uv,
+                "pip",
+                "install",
+                "--python",
+                str(environment / "bin/python"),
+                str(distribution),
+            ],
+            cwd=temporary,
+            env=env,
+        )
+        verify_docs_cli(environment, temporary / f"docs-consumer-{index}", env)
+    # Continue standards checks using the wheel rebuilt from the sdist.
+    environment = temporary / "environment-1"
     python = environment / "bin/python"
-    run(
-        [
-            uv,
-            "pip",
-            "install",
-            "--python",
-            str(python),
-            str(next(rebuilt.glob("*.whl"))),
-        ],
-        cwd=temporary,
-        env=env,
-    )
     consumer = temporary / "consumer"
     consumer.mkdir()
     run(["git", "init", "--quiet"], cwd=consumer, env=env)

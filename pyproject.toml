@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nox-python-standards"
-version = "0.2.1"
+version = "0.3.0"
 description = "Check and sync complete local copies of Noxala Python standards"
 readme = "README.md"
 license = "0BSD"
@@ -18,6 +18,7 @@ Issues = "https://github.com/noxala/nox-python-standards/issues"
 
 [project.scripts]
 nox-py-standards = "nox_python_standards.cli:main"
+nox-docs-check = "nox_python_standards.docs_cli:main"
 
 [dependency-groups]
 dev = ["pytest==9.0.3", "ruff==0.15.14", "pyright==1.1.411"]
@@ -37,6 +38,14 @@ dependency-group = "dev"
 
 [tool.nox-python-standards.ruff]
 authorized_version = "v0.15.14"
+
+[tool.nox-python-standards.docs]
+include = ["AGENTS.md", "README.md", "docs/**/*.md", ".noxala/*.md"]
+required = ["AGENTS.md", "README.md", "docs/DOCUMENTATION_CHECKS.md"]
+
+[[tool.nox-python-standards.docs.budgets]]
+include = ["**/AGENTS.md"]
+max-bytes = 8192
 
 # Shared fields are checked against the installed release. Explicit adoption:
 # nox-py-standards sync; CI: nox-py-standards check.
