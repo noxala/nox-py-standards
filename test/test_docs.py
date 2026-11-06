@@ -456,3 +456,348 @@ def test_generated_docs_and_historical_adr_bodies_are_not_content_checked(
     assert result.returncode == 0, result.stdout + result.stderr
     assert "missing-generated.md" not in result.stderr
     assert "missing-history.md" not in result.stderr
+
+
+@pytest.fixture
+def navigable_repository(tmp_path: Path) -> Path:
+    _write_valid_repository(tmp_path)
+    policy = _COMO_POLICY.replace(
+        'include = ["**/AGENTS.md", "ARCHITECTURE.md", "README.md", "docs/**/*.md"]',
+        'include = ["**/AGENTS.md", "*.md", "docs/**/*.md"]',
+    ).replace(
+        'path = "docs/README.md"',
+        'path = "docs/README.md"\nrequire-content-check = true',
+    )
+    policy += """\
+link-columns = ["Read"]
+path-columns = ["Implementation authority"]
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "AGENTS.md"
+targets = ["ARCHITECTURE.md"]
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "README.md"
+targets = ["docs/README.md"]
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "ARCHITECTURE.md"
+targets = ["docs/README.md"]
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "docs/architecture/persistence.md"
+targets = ["docs/DOMAIN.md#domain"]
+"""
+    _write(tmp_path / "pyproject.toml", policy)
+    return tmp_path
+
+
+def test_navigation_policy_preserves_historical_body_exclusions(
+    navigable_repository: Path,
+) -> None:
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("source", ["AGENTS.md", "README.md", "ARCHITECTURE.md"])
+def test_navigation_requires_every_configured_entry_link(
+    navigable_repository: Path, source: str
+) -> None:
+    path = navigable_repository / source
+    # Remove only the entry route, leaving all router rows intact.
+    path.write_text(
+        path.read_text().replace("See [", "See `[").replace(").\n", ").`\n")
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert f"{source} requires a navigation link to" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "Documentation-sync guide",
+        "`docs/workflows/example.md`",
+        "`[workflow](docs/workflows/example.md)`",
+        "[workflow](https://example.invalid/guide.md)",
+        "[source](application/example.py)",
+        "[directory](docs/workflows/)",
+        "![workflow](docs/workflows/example.md)",
+        "[workflow](docs/workflows/example.md#absent)",
+    ],
+)
+def test_router_requires_a_real_document_link_in_each_configured_column(
+    navigable_repository: Path, route: str
+) -> None:
+    path = navigable_repository / "ARCHITECTURE.md"
+    path.write_text(
+        path.read_text().replace("[workflow](docs/workflows/example.md)", route)
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert "ARCHITECTURE.md Task router row 1 column 'Read'" in result.stderr
+    assert "must contain a local Markdown document link" in result.stderr
+
+
+@pytest.mark.parametrize("route", ["[workflow][example]", "[example][]"])
+def test_router_resolves_reference_definitions_from_its_document(
+    navigable_repository: Path, route: str
+) -> None:
+    path = navigable_repository / "ARCHITECTURE.md"
+    path.write_text(
+        path.read_text().replace("[workflow](docs/workflows/example.md)", route)
+        + "\n[example]: docs/workflows/example.md#responsibility\n"
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("authority", ["Application code", "`application/missing.py`"])
+def test_router_requires_source_paths_in_the_configured_column(
+    navigable_repository: Path, authority: str
+) -> None:
+    path = navigable_repository / "ARCHITECTURE.md"
+    path.write_text(path.read_text().replace("`application/example.py`", authority))
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert "row 1 column 'Implementation authority'" in result.stderr
+
+
+def test_router_cannot_borrow_a_source_path_from_another_column(
+    navigable_repository: Path,
+) -> None:
+    path = navigable_repository / "ARCHITECTURE.md"
+    path.write_text(
+        path.read_text().replace(
+            "| Example | [workflow](docs/workflows/example.md) | "
+            "`application/example.py` |",
+            "| `application/example.py` | [workflow](docs/workflows/example.md) | "
+            "See code |",
+        )
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert "row 1 column 'Implementation authority' must declare" in result.stderr
+
+
+def test_catalog_requires_maintained_documents_to_receive_content_checks(
+    tmp_path: Path,
+) -> None:
+    _write_valid_repository(tmp_path)
+    config = tmp_path / "pyproject.toml"
+    config.write_text(
+        config.read_text().replace(
+            'path = "docs/README.md"',
+            'path = "docs/README.md"\nrequire-content-check = true',
+        )
+    )
+    _write(tmp_path / "CONTRIBUTING.md", "# Contributing\n[Broken](missing.md)\n")
+    catalog = tmp_path / "docs/README.md"
+    catalog.write_text(catalog.read_text() + "\n[Contributing](../CONTRIBUTING.md)\n")
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert (
+        "CONTRIBUTING.md selected by docs/README.md has no content check"
+        in result.stderr
+    )
+    assert "docs.include" in result.stderr
+    assert "docs.exclude" in result.stderr
+    config.write_text(
+        config.read_text().replace('"ARCHITECTURE.md", "README.md",', '"*.md",')
+    )
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert "CONTRIBUTING.md has broken link: missing.md" in result.stderr
+    assert "has no content check" not in result.stderr
+
+
+@pytest.mark.parametrize("path", ["ARCHITECTURE.md", "docs/README.md"])
+def test_policy_documents_are_link_checked_outside_general_selection(
+    tmp_path: Path, path: str
+) -> None:
+    _write_valid_repository(tmp_path)
+    config = tmp_path / "pyproject.toml"
+    config.write_text(
+        config.read_text().replace(
+            'include = ["**/AGENTS.md", "ARCHITECTURE.md", "README.md", '
+            '"docs/**/*.md"]',
+            'include = ["AGENTS.md"]',
+        )
+    )
+    document = tmp_path / path
+    document.write_text(document.read_text() + "\n[Broken](absent.md)\n")
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert f"{path} has broken link: absent.md" in result.stderr
+
+
+def test_navigation_sources_are_checked_and_links_resolve_from_source_directory(
+    tmp_path: Path,
+) -> None:
+    _write_valid_repository(tmp_path)
+    config = tmp_path / "pyproject.toml"
+    config.write_text(
+        config.read_text()
+        + """\
+[[tool.nox-python-standards.docs.navigation]]
+path = "extra/ROUTES.md"
+targets = ["docs/DOMAIN.md#domain"]
+"""
+    )
+    _write(tmp_path / "extra/ROUTES.md", "[Domain](../docs/DOMAIN.md#domain)\n")
+    assert _run_checker(tmp_path).returncode == 0
+    _write(
+        tmp_path / "extra/ROUTES.md",
+        "[Domain](../docs/DOMAIN.md#domain)\n[Broken](absent.md)",
+    )
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert "extra/ROUTES.md has broken link: absent.md" in result.stderr
+
+
+@pytest.mark.parametrize("destination", ["../DOMAIN.md", "../DOMAIN.md#absent"])
+def test_required_fragment_cannot_be_substituted_with_a_different_link(
+    navigable_repository: Path, destination: str
+) -> None:
+    path = navigable_repository / "docs/architecture/persistence.md"
+    path.write_text(f"# Persistence\n[Domain]({destination})\n")
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert "requires a navigation link to docs/DOMAIN.md#domain" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "route", ["[domain]: ../DOMAIN.md#domain", "![Domain](../DOMAIN.md#domain)"]
+)
+def test_definitions_and_images_cannot_satisfy_required_navigation(
+    navigable_repository: Path, route: str
+) -> None:
+    _write(
+        navigable_repository / "docs/architecture/persistence.md",
+        f"# Persistence\n{route}\n",
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert "requires a navigation link to docs/DOMAIN.md#domain" in result.stderr
+
+
+def test_coverage_rule_with_no_catalog_members_is_actionable(
+    navigable_repository: Path,
+) -> None:
+    config = navigable_repository / "pyproject.toml"
+    config.write_text(
+        config.read_text().replace(
+            'include = ["docs/**/*.md", "*.md"]', 'include = ["docs/README.md"]'
+        )
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert (
+        "catalog include patterns matched no files other than the catalog"
+        in result.stderr
+    )
+
+
+def test_explicit_content_exclusion_preserves_catalog_discovery(
+    navigable_repository: Path,
+) -> None:
+    config = navigable_repository / "pyproject.toml"
+    config.write_text(
+        config.read_text().replace(
+            'exclude = ["docs/generated/**", "docs/adr/[0-9]*.md"]',
+            'exclude = ["docs/generated/**", "docs/adr/[0-9]*.md", "docs/DOMAIN.md"]',
+        )
+    )
+    _write(
+        navigable_repository / "docs/DOMAIN.md", "# Domain\n[Historical](absent.md)\n"
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("source", ["ARCHITECTURE.md", "docs/README.md"])
+def test_policy_documents_cannot_exclude_their_own_links(
+    tmp_path: Path, source: str
+) -> None:
+    _write_valid_repository(tmp_path)
+    config = tmp_path / "pyproject.toml"
+    config.write_text(
+        config.read_text().replace(
+            'exclude = ["docs/generated/**", "docs/adr/[0-9]*.md"]',
+            f'exclude = ["docs/generated/**", "docs/adr/[0-9]*.md", "{source}"]',
+        )
+    )
+    path = tmp_path / source
+    path.write_text(path.read_text() + "\n[Broken](absent.md)\n")
+    result = _run_checker(tmp_path)
+    assert result.returncode == 1
+    assert f"{source} has broken link: absent.md" in result.stderr
+
+
+def test_router_link_requirement_applies_to_later_rows(
+    navigable_repository: Path,
+) -> None:
+    path = navigable_repository / "ARCHITECTURE.md"
+    path.write_text(
+        path.read_text().replace(
+            "[guide](docs/architecture/persistence.md)", "Guide pending"
+        )
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert "row 2 column 'Read' must contain" in result.stderr
+
+
+def test_router_source_tokens_support_file_symbols(navigable_repository: Path) -> None:
+    path = navigable_repository / "ARCHITECTURE.md"
+    path.write_text(
+        path.read_text().replace(
+            "`application/example.py`", "`application/example.py::symbol`"
+        )
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 0, result.stderr
+
+
+def test_navigation_without_required_fragment_accepts_a_section_link(
+    navigable_repository: Path,
+) -> None:
+    path = navigable_repository / "AGENTS.md"
+    path.write_text(
+        path.read_text().replace("(ARCHITECTURE.md)", "(ARCHITECTURE.md#system)")
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 0, result.stderr
+
+
+def test_navigation_failures_are_read_only(navigable_repository: Path) -> None:
+    _write(navigable_repository / "AGENTS.md", "# Instructions\nSee architecture.\n")
+    before = {
+        p: p.read_bytes()
+        for p in navigable_repository.rglob("*")
+        if p.is_file() and ".git" not in p.parts
+    }
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    after = {
+        p: p.read_bytes()
+        for p in navigable_repository.rglob("*")
+        if p.is_file() and ".git" not in p.parts
+    }
+    assert before == after
+
+
+@pytest.mark.parametrize("target", ["absent.md", "docs/DOMAIN.md#absent"])
+def test_ineffective_navigation_targets_are_actionable(
+    navigable_repository: Path, target: str
+) -> None:
+    config = navigable_repository / "pyproject.toml"
+    config.write_text(
+        config.read_text().replace(
+            'targets = ["docs/DOMAIN.md#domain"]', f'targets = ["{target}"]'
+        )
+    )
+    result = _run_checker(navigable_repository)
+    assert result.returncode == 1
+    assert "navigation target" in result.stderr
+    assert target in result.stderr

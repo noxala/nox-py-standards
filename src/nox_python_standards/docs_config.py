@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import tomllib
 from typing import cast
+from urllib.parse import unquote
 
 from nox_python_standards.repository import StandardsError, require_regular
 
@@ -65,9 +67,12 @@ class Selection:
         )
 
     def matches(self, path: Path) -> bool:
-        return any(path.full_match(pattern) for pattern in self.include) and not any(
-            path.full_match(pattern) for pattern in self.exclude
+        return any(path.full_match(pattern) for pattern in self.include) and not (
+            self.is_excluded(path)
         )
+
+    def is_excluded(self, path: Path) -> bool:
+        return any(path.full_match(pattern) for pattern in self.exclude)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -98,13 +103,62 @@ class Budget:
 class Catalog:
     path: str
     selection: Selection
+    require_content_check: bool
 
     @classmethod
     def create(cls, value: object, label: str) -> Catalog:
-        data = _table(value, label, {"path", "include", "exclude"})
+        data = _table(
+            value, label, {"path", "include", "exclude", "require-content-check"}
+        )
+        coverage = data.get("require-content-check", False)
+        if type(coverage) is not bool:
+            raise StandardsError(f"{label}.require-content-check: expected a boolean")
         return cls(
             path=_path(data.get("path"), f"{label}.path"),
             selection=Selection.create(data, label),
+            require_content_check=coverage,
+        )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NavigationTarget:
+    path: str
+    fragment: str | None
+
+    @classmethod
+    def create(cls, value: str, label: str) -> NavigationTarget:
+        decoded = unquote(value)
+        path, separator, fragment = decoded.partition("#")
+        if (
+            "?" in decoded
+            or re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", decoded)
+            or (separator and not fragment.strip())
+        ):
+            raise StandardsError(
+                f"{label}: expected a local Markdown path with optional fragment"
+            )
+        path = _path(path, label)
+        if Path(path).suffix.lower() != ".md":
+            raise StandardsError(
+                f"{label}: expected a Markdown document (.md): {value!r}"
+            )
+        return cls(path=path, fragment=fragment if separator else None)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Navigation:
+    path: str
+    targets: tuple[NavigationTarget, ...]
+
+    @classmethod
+    def create(cls, value: object, label: str) -> Navigation:
+        data = _table(value, label, {"path", "targets"})
+        return cls(
+            path=_path(data.get("path"), f"{label}.path"),
+            targets=tuple(
+                NavigationTarget.create(target, f"{label}.targets")
+                for target in _strings(data.get("targets"), f"{label}.targets")
+            ),
         )
 
 
@@ -146,17 +200,36 @@ class Router:
     path: str
     section: str
     columns: tuple[str, ...]
+    link_columns: tuple[str, ...]
+    path_columns: tuple[str, ...]
 
     @classmethod
     def create(cls, value: object, label: str) -> Router:
-        data = _table(value, label, {"path", "section", "columns"})
+        data = _table(
+            value, label, {"path", "section", "columns", "link-columns", "path-columns"}
+        )
         section = data.get("section")
         if not isinstance(section, str) or not section.strip():
             raise StandardsError(f"{label}.section: expected a nonempty heading")
+        columns = _strings(data.get("columns"), f"{label}.columns")
+        if len(set(columns)) != len(columns):
+            raise StandardsError(f"{label}.columns: duplicate column names")
+        required_columns: dict[str, tuple[str, ...]] = {}
+        for key in ("link-columns", "path-columns"):
+            names = _strings(data[key], f"{label}.{key}") if key in data else ()
+            if len(set(names)) != len(names) or any(
+                name not in columns for name in names
+            ):
+                raise StandardsError(
+                    f"{label}.{key}: require distinct names from columns"
+                )
+            required_columns[key] = names
         return cls(
             path=_path(data.get("path"), f"{label}.path"),
             section=section,
-            columns=_strings(data.get("columns"), f"{label}.columns"),
+            columns=columns,
+            link_columns=required_columns["link-columns"],
+            path_columns=required_columns["path-columns"],
         )
 
 
@@ -175,6 +248,7 @@ class DocsConfiguration:
     catalogs: tuple[Catalog, ...]
     metadata: tuple[Metadata, ...]
     routers: tuple[Router, ...]
+    navigation: tuple[Navigation, ...]
 
     @classmethod
     def read(cls, root: Path) -> DocsConfiguration:
@@ -202,6 +276,7 @@ class DocsConfiguration:
                 "catalogs",
                 "metadata",
                 "routers",
+                "navigation",
             },
         )
         return cls(
@@ -227,5 +302,9 @@ class DocsConfiguration:
             routers=tuple(
                 Router.create(rule, f"{_PREFIX}.routers[{index}]")
                 for index, rule in enumerate(_rules(data, "routers"))
+            ),
+            navigation=tuple(
+                Navigation.create(rule, f"{_PREFIX}.navigation[{index}]")
+                for index, rule in enumerate(_rules(data, "navigation"))
             ),
         )

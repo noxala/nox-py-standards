@@ -22,15 +22,23 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
     (consumer / "docs").mkdir()
     (consumer / "pyproject.toml").write_text(
         "[tool.nox-python-standards.docs]\n"
-        'include = ["AGENTS.md", "docs/**/*.md"]\nrequired = ["AGENTS.md"]\n'
+        'include = ["AGENTS.md", "docs/GUIDE.md"]\nrequired = ["AGENTS.md"]\n'
         "[[tool.nox-python-standards.docs.budgets]]\n"
         'include = ["AGENTS.md"]\nmax-words = 450\n'
         "[[tool.nox-python-standards.docs.catalogs]]\n"
         'path = "docs/README.md"\ninclude = ["docs/**/*.md"]\n'
+        "require-content-check = true\n"
+        "[[tool.nox-python-standards.docs.navigation]]\n"
+        'path = "AGENTS.md"\ntargets = ["docs/GUIDE.md#details"]\n'
+        "[[tool.nox-python-standards.docs.routers]]\n"
+        'path = "AGENTS.md"\nsection = "Routes"\ncolumns = ["Task", "Read", "Source"]\n'
+        'link-columns = ["Read"]\npath-columns = ["Source"]\n'
     )
     (consumer / "AGENTS.md").write_text(
         "# Guide\n[Details][guide]\n[guide]: docs/GUIDE.md#details\n"
         "`[Example](absent.md)`\n"
+        "## Routes\n| Task | Read | Source |\n| --- | --- | --- |\n"
+        "| Example | [guide][] | `__init__.py` |\n"
     )
     (consumer / "docs/GUIDE.md").write_text("# Guide\n## Details\n")
     catalog = consumer / "docs/README.md"
@@ -60,6 +68,36 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
         raise RuntimeError("Failed documentation check modified catalog")
     catalog.write_bytes(before[catalog])
     guide = consumer / "AGENTS.md"
+    guide.write_text(
+        before[guide]
+        .decode()
+        .replace("[Details][guide]", "Guide pending")
+        .replace("[guide][]", "Guide pending")
+    )
+    navigation_failure = subprocess.run(
+        [cli], cwd=consumer, env=env, text=True, capture_output=True, check=False
+    )
+    if (
+        navigation_failure.returncode != 1
+        or "requires a navigation link to docs/GUIDE.md#details"
+        not in navigation_failure.stderr
+        or "row 1 column 'Read'" not in navigation_failure.stderr
+    ):
+        raise RuntimeError(
+            f"Installed navigation rules did not fail: {navigation_failure}"
+        )
+    guide.write_bytes(before[guide])
+    config = consumer / "pyproject.toml"
+    config.write_text(before[config].decode().replace(', "docs/GUIDE.md"', ""))
+    coverage_failure = subprocess.run(
+        [cli], cwd=consumer, env=env, text=True, capture_output=True, check=False
+    )
+    if (
+        coverage_failure.returncode != 1
+        or "has no content check" not in coverage_failure.stderr
+    ):
+        raise RuntimeError(f"Installed coverage rule did not fail: {coverage_failure}")
+    config.write_bytes(before[config])
     guide.write_text("# Guide\n[Broken](absent.md)\n")
     failure = subprocess.run(
         [str(environment / "bin/python"), "-m", "nox_python_standards.docs_cli"],

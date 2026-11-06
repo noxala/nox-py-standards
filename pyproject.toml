@@ -47,6 +47,14 @@ required = ["AGENTS.md", "README.md", "docs/DOCUMENTATION_CHECKS.md"]
 include = ["**/AGENTS.md"]
 max-bytes = 8192
 
+[[tool.nox-python-standards.docs.navigation]]
+path = "AGENTS.md"
+targets = ["README.md#ci-and-package-development", "docs/DOCUMENTATION_CHECKS.md"]
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "README.md"
+targets = ["docs/DOCUMENTATION_CHECKS.md"]
+
 # Shared fields are checked against the installed release. Explicit adoption:
 # nox-py-standards sync; CI: nox-py-standards check.
 [tool.ruff]
