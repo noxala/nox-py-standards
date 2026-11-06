@@ -27,6 +27,12 @@ class LocalLink:
     is_image: bool = False
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class MarkdownTable:
+    columns: tuple[str, ...]
+    rows: tuple[tuple[str, ...], ...]
+
+
 def _blank(text: str) -> str:
     """Hide syntax without joining lines or changing source offsets."""
     return re.sub(r"[^\r\n]", " ", text)
@@ -254,3 +260,43 @@ def markdown_section(text: str, heading: str) -> str | None:
     remainder = clean_text[match.end() :]
     next_heading = re.search(r"^#{1,2}[ \t]+", remainder, re.MULTILINE)
     return remainder if next_heading is None else remainder[: next_heading.start()]
+
+
+def _pipe_cells(line: str) -> tuple[str, ...] | None:
+    stripped = line.strip()
+    if "|" not in stripped:
+        return None
+    return tuple(
+        cell.strip() for cell in stripped.removeprefix("|").removesuffix("|").split("|")
+    )
+
+
+def markdown_tables(text: str) -> tuple[MarkdownTable, ...]:
+    """Read pipe tables with delimiter rows; retain code tokens in cell values."""
+    clean = without_fenced_code(text)
+    lines = clean.splitlines()
+    visible = _without_code_spans(clean).splitlines()
+    tables: list[MarkdownTable] = []
+    index = 0
+    while index + 1 < len(lines):
+        header = _pipe_cells(visible[index])
+        separator = _pipe_cells(visible[index + 1])
+        if (
+            header is None
+            or separator is None
+            or len(header) != len(separator)
+            or not all(re.fullmatch(r":?-{3,}:?", cell) for cell in separator)
+        ):
+            index += 1
+            continue
+        columns = _pipe_cells(lines[index])
+        assert columns is not None
+        index += 2
+        rows: list[tuple[str, ...]] = []
+        while index < len(lines) and _pipe_cells(visible[index]) is not None:
+            cells = _pipe_cells(lines[index])
+            assert cells is not None
+            rows.append(cells)
+            index += 1
+        tables.append(MarkdownTable(columns=columns, rows=tuple(rows)))
+    return tuple(tables)

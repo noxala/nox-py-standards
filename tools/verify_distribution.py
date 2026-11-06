@@ -28,6 +28,10 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
         "[[tool.nox-python-standards.docs.catalogs]]\n"
         'path = "docs/README.md"\ninclude = ["docs/**/*.md"]\n'
         "require-content-check = true\n"
+        "[[tool.nox-python-standards.docs.catalogs.tables]]\n"
+        'columns = ["Document", "Status", "Read when", "Authority"]\n'
+        'document-column = "Document"\npath-columns = ["Authority"]\n'
+        'accepted-values = { Status = ["Current"] }\n'
         "[[tool.nox-python-standards.docs.navigation]]\n"
         'path = "AGENTS.md"\ntargets = ["docs/GUIDE.md#details"]\n'
         "[[tool.nox-python-standards.docs.routers]]\n"
@@ -42,7 +46,12 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
     )
     (consumer / "docs/GUIDE.md").write_text("# Guide\n## Details\n")
     catalog = consumer / "docs/README.md"
-    catalog.write_text("# Catalog\n[guide][]\n[guide]: GUIDE.md#details\n")
+    catalog.write_text(
+        "# Catalog\n| Document | Status | Read when | Authority |\n"
+        "| --- | --- | --- | --- |\n"
+        "| [guide][] | Current | Implementation | `__init__.py` |\n"
+        "\n[guide]: GUIDE.md#details\n"
+    )
     (consumer / "__init__.py").write_text('raise RuntimeError("consumer imported")\n')
     cli = str(environment / "bin/nox-docs-check")
     # Neither standards configuration nor consumer Ruff/Pyright is installed here.
@@ -66,6 +75,21 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
         raise RuntimeError(f"Unused definition satisfied catalog: {discovery_failure}")
     if catalog.read_text() != "# Catalog\n[unused]: GUIDE.md#details\n":
         raise RuntimeError("Failed documentation check modified catalog")
+    catalog.write_bytes(before[catalog])
+    invalid_table = before[catalog].decode().replace("| Current |", "| TBD |")
+    catalog.write_text(invalid_table)
+    table_failure = subprocess.run(
+        [cli], cwd=consumer, env=env, text=True, capture_output=True, check=False
+    )
+    if (
+        table_failure.returncode != 1
+        or "column 'Status' has unsupported value 'TBD'" not in table_failure.stderr
+    ):
+        raise RuntimeError(
+            f"Installed catalog table rule did not fail: {table_failure}"
+        )
+    if catalog.read_text() != invalid_table:
+        raise RuntimeError("Failed catalog table check modified consumer files")
     catalog.write_bytes(before[catalog])
     guide = consumer / "AGENTS.md"
     guide.write_text(

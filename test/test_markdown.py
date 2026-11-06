@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from nox_python_standards.markdown import markdown_links
+from nox_python_standards.markdown import markdown_links, markdown_tables
 
 
 @pytest.mark.parametrize(
@@ -130,3 +130,42 @@ def test_escaped_image_marker_preserves_a_normal_link() -> None:
     links, errors = markdown_links(r"\![Guide](guide.md)")
     assert not errors
     assert not links[0].is_image
+
+
+def test_categorized_pipe_tables_retain_cell_contents() -> None:
+    tables = markdown_tables("""\
+## First
+| Doc | Authority |
+| --- | :---: |
+| [Guide](GUIDE.md) | `src/example.py` |
+
+## Second
+Doc | Status
+:--- | ---:
+[Plan][plan] | Planned (not implemented)
+""")
+    assert len(tables) == 2
+    assert tables[0].columns == ("Doc", "Authority")
+    assert tables[0].rows == (("[Guide](GUIDE.md)", "`src/example.py`"),)
+    assert tables[1].rows == (("[Plan][plan]", "Planned (not implemented)"),)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "| Doc | Status |\n| Guide | Current |\n",
+        "| Doc | Status |\n| --- |\n",
+        "| Doc | Status |\n| -- | --- |\n",
+        "```md\n| Doc |\n| --- |\n| Guide |\n```",
+        "`\n| Doc |\n| --- |\n| Guide |\n`",
+    ],
+)
+def test_non_tables_and_code_examples_are_not_tables(text: str) -> None:
+    assert markdown_tables(text) == ()
+
+
+def test_pipe_table_empty_cells_and_malformed_rows_are_retained() -> None:
+    tables = markdown_tables(
+        "| Doc | Status |\n| --- | --- |\n| Guide | |\n| extra | cells | here |\n"
+    )
+    assert tables[0].rows == (("Guide", ""), ("extra", "cells", "here"))
