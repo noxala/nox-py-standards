@@ -9,6 +9,7 @@ from nox_python_standards.docs_config import (
     CatalogTable,
     DocsConfiguration,
     Navigation,
+    PathGroup,
     Router,
     Selection,
 )
@@ -240,10 +241,12 @@ def _check_navigation(documents: _Documents, rule: Navigation) -> list[str]:
     return errors
 
 
-def _check_paths(root: Path, source_label: str, text: str) -> list[str]:
+def _check_paths(
+    root: Path, source_label: str, text: str, *, required: bool = True
+) -> list[str]:
     paths = repo_paths_from_code_tokens(text)
     errors: list[str] = []
-    if not paths:
+    if required and not paths:
         errors.append(f"{source_label} must declare at least one repository path")
     for path in paths:
         absolute = (root / path).resolve()
@@ -251,6 +254,71 @@ def _check_paths(root: Path, source_label: str, text: str) -> list[str]:
             errors.append(f"{source_label} references path outside repository: {path}")
         elif not absolute.exists():
             errors.append(f"{source_label} references missing path: {path}")
+    return errors
+
+
+def _check_path_groups(
+    root: Path, source: Path, text: str, groups: tuple[PathGroup, ...]
+) -> list[str]:
+    errors: list[str] = []
+    candidates: dict[str, set[Path]] = {}
+    checked_scopes: set[tuple[str, str]] = set()
+    for group in groups:
+        if group.field is not None:
+            scope, kind = group.field, "field"
+            value = metadata_value(text, scope)
+        else:
+            assert group.section is not None
+            scope, kind = group.section, "section"
+            value = markdown_section(text, scope)
+        label = f"{source} {kind} '{scope}' path group '{group.name}'"
+        if value is None:
+            errors.append(f"{label} is missing its metadata field or section")
+            continue
+        if (kind, scope) not in checked_scopes:
+            errors.extend(_check_paths(root, label, value, required=False))
+            checked_scopes.add((kind, scope))
+        matches: set[Path] = set()
+        for token in repo_paths_from_code_tokens(value):
+            path = (root / token).resolve()
+            if not path.is_relative_to(root):
+                continue
+            if not path.is_file() and not (group.directories and path.is_dir()):
+                continue
+            relative = path.relative_to(root)
+            if group.selection.matches(relative):
+                matches.add(relative)
+        if not matches:
+            kind_label = "file or directory" if group.directories else "file"
+            errors.append(
+                f"{label} must declare an existing {kind_label} matching: "
+                f"{', '.join(group.selection.include)}"
+            )
+        else:
+            candidates[group.name] = matches
+
+    # Assign distinct paths even when consumer patterns overlap. Repeated spellings
+    # or file::symbol references to the same resolved path are one entry point.
+    owners: dict[Path, str] = {}
+
+    def assign(name: str, seen: set[Path]) -> bool:
+        for path in sorted(candidates[name]):
+            if path in seen:
+                continue
+            seen.add(path)
+            previous = owners.get(path)
+            if previous is None or assign(previous, seen):
+                owners[path] = name
+                return True
+        return False
+
+    for name in candidates:
+        if not assign(name, set()):
+            errors.append(
+                f"{source} path group '{name}' requires a distinct repository "
+                "entry point; add another matching path so every group can be "
+                "satisfied independently"
+            )
     return errors
 
 
@@ -352,18 +420,29 @@ def documentation_errors(
             )
         for path in matches:
             text = documents.text(path)
-            for field in dict.fromkeys((*metadata.fields, *metadata.path_fields)):
+            accepted = dict(metadata.accepted_values)
+            for field in dict.fromkeys(
+                (*metadata.fields, *metadata.path_fields, *accepted)
+            ):
                 value = metadata_value(text, field)
                 if value is None:
                     errors.append(f"{path} is missing '- {field}: ...' metadata")
-                elif field in metadata.path_fields:
-                    errors.extend(_check_paths(root, f"{path} {field}", value))
+                else:
+                    if field in metadata.path_fields:
+                        errors.extend(_check_paths(root, f"{path} {field}", value))
+                    if field in accepted and value not in accepted[field]:
+                        errors.append(
+                            f"{path} {field} has unsupported value {value!r}; "
+                            "expected one of: "
+                            f"{', '.join(accepted[field])}"
+                        )
             for heading in metadata.path_sections:
                 section = markdown_section(text, heading)
                 if section is None:
                     errors.append(f"{path} is missing '## {heading}'")
                 else:
                     errors.extend(_check_paths(root, f"{path} {heading}", section))
+            errors.extend(_check_path_groups(root, path, text, metadata.path_groups))
     for router in configuration.routers:
         errors.extend(_check_router(documents, router))
     return tuple(errors)

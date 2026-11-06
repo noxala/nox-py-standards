@@ -37,6 +37,12 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
         "[[tool.nox-python-standards.docs.routers]]\n"
         'path = "AGENTS.md"\nsection = "Routes"\ncolumns = ["Task", "Read", "Source"]\n'
         'link-columns = ["Read"]\npath-columns = ["Source"]\n'
+        "[[tool.nox-python-standards.docs.metadata]]\n"
+        'include = ["docs/GUIDE.md"]\naccepted-values = { Status = ["Current"] }\n'
+        "[[tool.nox-python-standards.docs.metadata.path-groups]]\n"
+        'name = "implementation"\nsection = "Details"\ninclude = ["__init__.py"]\n'
+        "[[tool.nox-python-standards.docs.metadata.path-groups]]\n"
+        'name = "tests"\nsection = "Details"\ninclude = ["checks/**/*.py"]\n'
     )
     (consumer / "AGENTS.md").write_text(
         "# Guide\n[Details][guide]\n[guide]: docs/GUIDE.md#details\n"
@@ -44,7 +50,15 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
         "## Routes\n| Task | Read | Source |\n| --- | --- | --- |\n"
         "| Example | [guide][] | `__init__.py` |\n"
     )
-    (consumer / "docs/GUIDE.md").write_text("# Guide\n## Details\n")
+    workflow = consumer / "docs/GUIDE.md"
+    workflow.write_text(
+        "# Guide\n- Status: Current\n## Details\n"
+        "- `__init__.py::handler`\n- `checks/test_consumer.py::case`\n"
+    )
+    (consumer / "checks").mkdir()
+    (consumer / "checks/test_consumer.py").write_text(
+        'raise RuntimeError("test imported")\n'
+    )
     catalog = consumer / "docs/README.md"
     catalog.write_text(
         "# Catalog\n| Document | Status | Read when | Authority |\n"
@@ -64,6 +78,32 @@ def verify_docs_cli(environment: Path, consumer: Path, env: dict[str, str]) -> N
     run([cli, "--root", str(consumer)], cwd=consumer.parent, env=env)
     if any(path.read_bytes() != contents for path, contents in before.items()):
         raise RuntimeError("Documentation check modified consumer files")
+    for invalid, diagnostic in (
+        (
+            before[workflow].decode().replace("Status: Current", "Status: TBD"),
+            "docs/GUIDE.md Status has unsupported value 'TBD'",
+        ),
+        (
+            before[workflow]
+            .decode()
+            .replace("checks/test_consumer.py::case", "./__init__.py::other"),
+            "path group 'tests' must declare an existing file matching:",
+        ),
+    ):
+        workflow.write_text(invalid)
+        metadata_failure = subprocess.run(
+            [cli], cwd=consumer, env=env, text=True, capture_output=True, check=False
+        )
+        if (
+            metadata_failure.returncode != 1
+            or diagnostic not in metadata_failure.stderr
+        ):
+            raise RuntimeError(
+                f"Installed workflow rules did not fail: {metadata_failure}"
+            )
+        if workflow.read_text() != invalid:
+            raise RuntimeError("Failed workflow check modified consumer files")
+    workflow.write_bytes(before[workflow])
     catalog.write_text("# Catalog\n[unused]: GUIDE.md#details\n")
     discovery_failure = subprocess.run(
         [cli], cwd=consumer, env=env, text=True, capture_output=True, check=False

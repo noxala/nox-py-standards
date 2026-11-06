@@ -13,12 +13,15 @@ from nox_python_standards.repository import StandardsError, require_regular
 _PREFIX = "tool.nox-python-standards.docs"
 
 
-def _table(value: object, label: str, keys: set[str]) -> dict[str, object]:
+def _table(value: object, label: str, keys: set[str] | None) -> dict[str, object]:
     if not isinstance(value, dict):
         raise StandardsError(f"{label}: expected a TOML table")
     result = cast(dict[str, object], value)
-    if unknown := result.keys() - keys:
-        raise StandardsError(f"{label}: unknown settings: {', '.join(sorted(unknown))}")
+    if keys is not None:
+        if unknown := result.keys() - keys:
+            raise StandardsError(
+                f"{label}: unknown settings: {', '.join(sorted(unknown))}"
+            )
     return result
 
 
@@ -31,6 +34,20 @@ def _strings(value: object, label: str, *, nonempty: bool = True) -> tuple[str, 
     ):
         raise StandardsError(f"{label}: expected a list of nonempty strings")
     return tuple(cast(list[str], values))
+
+
+def _accepted_values(
+    data: dict[str, object], label: str, *, keys: set[str] | None = None
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    if "accepted-values" not in data:
+        return ()
+    values = _table(data["accepted-values"], f"{label}.accepted-values", keys)
+    if not values or any(not field.strip() for field in values):
+        raise StandardsError(f"{label}.accepted-values: require nonempty field names")
+    return tuple(
+        (field, _strings(choices, f"{label}.accepted-values.{field}"))
+        for field, choices in values.items()
+    )
 
 
 def _path(value: object, label: str, *, glob: bool = False) -> str:
@@ -148,25 +165,13 @@ class CatalogTable:
             if "path-columns" in data
             else ()
         )
-        values: dict[str, object] = {}
-        if "accepted-values" in data:
-            values = _table(
-                data["accepted-values"], f"{label}.accepted-values", set(columns)
-            )
-            if not values:
-                raise StandardsError(
-                    f"{label}.accepted-values: require at least one column"
-                )
         return cls(
             section=cast(str | None, section),
             columns=columns,
             document_column=document_column,
             required_columns=required,
             path_columns=paths,
-            accepted_values=tuple(
-                (column, _strings(choices, f"{label}.accepted-values.{column}"))
-                for column, choices in values.items()
-            ),
+            accepted_values=_accepted_values(data, label, keys=set(columns)),
         )
 
 
@@ -253,18 +258,65 @@ class Navigation:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class PathGroup:
+    name: str
+    field: str | None
+    section: str | None
+    selection: Selection
+    directories: bool
+
+    @classmethod
+    def create(cls, value: object, label: str) -> PathGroup:
+        data = _table(
+            value,
+            label,
+            {"name", "field", "section", "include", "exclude", "directories"},
+        )
+        name = data.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise StandardsError(f"{label}.name: expected a nonempty group name")
+        scopes = [key for key in ("field", "section") if key in data]
+        if len(scopes) != 1:
+            raise StandardsError(f"{label}: require exactly one of field or section")
+        key = scopes[0]
+        scope = data[key]
+        if not isinstance(scope, str) or not scope.strip():
+            raise StandardsError(f"{label}.{key}: expected a nonempty name")
+        directories = data.get("directories", False)
+        if type(directories) is not bool:
+            raise StandardsError(f"{label}.directories: expected a boolean")
+        return cls(
+            name=name,
+            field=scope if key == "field" else None,
+            section=scope if key == "section" else None,
+            selection=Selection.create(data, label),
+            directories=directories,
+        )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Metadata:
     selection: Selection
     fields: tuple[str, ...]
     path_fields: tuple[str, ...]
     path_sections: tuple[str, ...]
+    accepted_values: tuple[tuple[str, tuple[str, ...]], ...]
+    path_groups: tuple[PathGroup, ...]
 
     @classmethod
     def create(cls, value: object, label: str) -> Metadata:
         data = _table(
             value,
             label,
-            {"include", "exclude", "fields", "path-fields", "path-sections"},
+            {
+                "include",
+                "exclude",
+                "fields",
+                "path-fields",
+                "path-sections",
+                "accepted-values",
+                "path-groups",
+            },
         )
         fields = _strings(data.get("fields", []), f"{label}.fields", nonempty=False)
         path_fields = _strings(
@@ -273,15 +325,34 @@ class Metadata:
         sections = _strings(
             data.get("path-sections", []), f"{label}.path-sections", nonempty=False
         )
-        if not fields and not path_fields and not sections:
+        values = _accepted_values(data, label)
+        rules = _rules(data, "path-groups", label=label)
+        if "path-groups" in data and not rules:
+            raise StandardsError(f"{label}.path-groups: require at least one group")
+        groups = tuple(
+            PathGroup.create(rule, f"{label}.path-groups[{index}]")
+            for index, rule in enumerate(rules)
+        )
+        if len({group.name for group in groups}) != len(groups):
+            raise StandardsError(f"{label}.path-groups: group names must be distinct")
+        if (
+            not fields
+            and not path_fields
+            and not sections
+            and not values
+            and not groups
+        ):
             raise StandardsError(
-                f"{label}: require fields, path-fields or path-sections"
+                f"{label}: require fields, path-fields, path-sections, "
+                "accepted-values or path-groups"
             )
         return cls(
             selection=Selection.create(data, label),
             fields=fields,
             path_fields=path_fields,
             path_sections=sections,
+            accepted_values=values,
+            path_groups=groups,
         )
 
 

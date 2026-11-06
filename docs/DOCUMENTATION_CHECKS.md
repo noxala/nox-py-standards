@@ -232,6 +232,67 @@ skipped. Recognized path tokens contain `/` or end in `.py`/`.md`; use `./Makefi
 or `./assets` for other root files or directories. Fenced examples do not satisfy
 metadata or sections. Every metadata rule must select at least one document.
 
+### Workflow status and path groups
+
+Metadata rules can additionally require accepted values and independently required
+implementation/test entry points. Both extensions are optional:
+
+```toml
+[[tool.nox-python-standards.docs.metadata]]
+include = ["docs/workflows/**/*.md"]
+exclude = ["**/README.md"]
+fields = ["Status", "Read when"]
+accepted-values = { Status = ["Current", "Planned (not implemented)"] }
+
+[[tool.nox-python-standards.docs.metadata.path-groups]]
+name = "implementation"
+section = "Code and tests"
+include = ["application/**/*.py"]
+directories = false  # default: file entry points only
+
+[[tool.nox-python-standards.docs.metadata.path-groups]]
+name = "tests"
+section = "Code and tests"
+include = ["test", "test/**"]
+directories = true  # accept file or directory entry points
+```
+
+`accepted-values` maps consumer-owned metadata labels to nonempty lists of accepted
+full values. Those labels become required even if absent from `fields`. Matching is
+case-sensitive and preserves qualifiers, using the normal metadata continuation-line
+joining described above. For example, `TBD` and `Planned` both fail the illustrated
+status rule. There is no built-in workflow status vocabulary.
+
+Each named `path-groups` rule requires at least one existing path from its own scope
+that matches its nonempty `include` and optional `exclude` patterns. Choose exactly
+one source: `section` names an exact level-two section, while `field` names a metadata
+label such as `Authority`. Paths elsewhere in the document cannot satisfy the group.
+All recognized paths declared in a group's scope must exist and stay within the
+repository, including paths outside the group's patterns. Code fences and template
+tokens do not supply entry points. These rules use the same repository-root path,
+inline-code, and `file.py::symbol` conventions as the simpler path checks.
+
+Patterns match resolved repository-relative paths; `./` spellings, symlink aliases,
+and multiple symbol references to one resolved path remain one entry point. Every
+group within a metadata rule needs a distinct entry point. Repeating an implementation
+path cannot replace a missing test path. Overlapping patterns are supported when
+distinct paths can satisfy every group. Classification belongs to the consumer's
+patterns; the checker does not discover tests, judge their adequacy, or inspect symbols.
+
+`directories` defaults to `false`. Setting it to `true` permits an existing directory
+as an entry point; its resolved path must itself match the patterns. The checker does
+not expand it into descendant files. For example, declaring `test/` needs a `test`
+pattern as well as `test/**` for descendants. No project-specific source or test
+directory names are embedded in the engine.
+
+Missing scopes, missing matches, and conflicts over one shared entry point identify
+the document and group; missing-match diagnostics also include the field/section and
+patterns. Add a matching path in that scope, adjust the consumer's patterns, or opt
+into directory entry points when appropriate. Group names must be unique within
+their metadata rule. Empty group arrays, malformed value sets, unknown settings,
+invalid patterns, and non-boolean directory options fail configuration validation.
+Without these extensions, existing metadata/path rules keep their original behavior.
+
 ## Task routers
 
 ```toml
