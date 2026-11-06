@@ -14,7 +14,7 @@ Add development dependencies with an exact PyPI version and the
 ```toml
 [dependency-groups]
 dev = [
-    "nox-python-standards==0.3.0",
+    "nox-python-standards==0.4.0",
     "ruff==0.15.14",
     "pyright==1.1.411",
 ]
@@ -60,6 +60,9 @@ for documentation links, guidance budgets, catalogs, metadata, and task routers.
 Repositories declare their own rules under `[tool.nox-python-standards.docs]`.
 See [configuration and adoption](docs/DOCUMENTATION_CHECKS.md). It does not change
 the `nox-py-standards check/sync` command contract or run consumer tools.
+Complete [compact](docs/examples/compact.toml) and
+[progressive-disclosure](docs/examples/progressive.toml) policy examples are tested
+in CI; adapt them explicitly to the consuming repository.
 
 ## Native fix policy
 

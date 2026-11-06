@@ -801,3 +801,70 @@ def test_ineffective_navigation_targets_are_actionable(
     assert result.returncode == 1
     assert "navigation target" in result.stderr
     assert target in result.stderr
+
+
+@pytest.mark.parametrize(
+    "weakening", [None, "navigation", "catalog", "status", "tests", "root-link"]
+)
+def test_complete_progressive_documentation_example(
+    tmp_path: Path, weakening: str | None
+) -> None:
+    _write_valid_repository(tmp_path)
+    policy = Path(__file__).resolve().parents[1] / "docs/examples/progressive.toml"
+    _write(tmp_path / "pyproject.toml", policy.read_text())
+    _write(
+        tmp_path / "docs/README.md",
+        "# Catalog\n\n## Current guides\n\n"
+        "| Document | Status | Read when | Authority |\n"
+        "| --- | --- | --- | --- |\n"
+        "| [Persistence](architecture/persistence.md) | Current | "
+        "Persistence changes | `db_models/` |\n"
+        "| [Workflow](workflows/example.md) | Current | Workflow changes | "
+        "`application/example.py` |\n"
+        "| [Domain](DOMAIN.md) | Current | Domain changes | "
+        "`application/example.py` |\n"
+        "| [Design](design-docs/current-design.md) | Current | Design changes | "
+        "`application/example.py` |\n"
+        "\n## Decisions\n\n"
+        "| Document | Status | Read when | Authority |\n"
+        "| --- | --- | --- | --- |\n"
+        "| [ADRs](adr/README.md) | Decision history | Old decisions | "
+        "`docs/adr/README.md` |\n",
+    )
+    expected: str | None = None
+    if weakening == "navigation":
+        _write(tmp_path / "AGENTS.md", "# Instructions\nRead architecture.\n")
+        expected = "AGENTS.md requires a navigation link to ARCHITECTURE.md"
+    elif weakening == "catalog":
+        _write(tmp_path / "docs/README.md", "[Domain](DOMAIN.md)\n")
+        expected = "has no catalog tables"
+    elif weakening in {"status", "tests"}:
+        workflow = tmp_path / "docs/workflows/example.md"
+        old, new = (
+            ("Status: Current", "Status: TBD")
+            if weakening == "status"
+            else ("test/example_test/", "application/example.py")
+        )
+        workflow.write_text(workflow.read_text().replace(old, new))
+        expected = (
+            "Status has unsupported value 'TBD'"
+            if weakening == "status"
+            else "path group 'tests' must declare"
+        )
+    elif weakening == "root-link":
+        _write(tmp_path / "CONTRIBUTING.md", "# Contributing\n[Broken](missing.md)\n")
+        expected = "CONTRIBUTING.md has broken link: missing.md"
+    before = {
+        path: path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file() and ".git" not in path.parts
+    }
+    result = _run_checker(tmp_path)
+    assert result.returncode == (0 if expected is None else 1), result.stderr
+    if expected is not None:
+        assert expected in result.stderr
+    assert before == {
+        path: path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file() and ".git" not in path.parts
+    }

@@ -1,0 +1,69 @@
+# Documentation policy fragment for progressive disclosure. Adapt paths, columns,
+# status qualifiers, and entry-point patterns to the consuming repository.
+[tool.nox-python-standards.docs]
+include = ["*.md", "**/AGENTS.md", "docs/**/*.md", ".noxala/*.md"]
+exclude = ["docs/generated/**", "docs/adr/[0-9]*.md"]
+required = ["AGENTS.md", "README.md", "ARCHITECTURE.md", "docs/README.md", "docs/workflows"]
+
+[[tool.nox-python-standards.docs.budgets]]
+include = ["**/AGENTS.md"]
+max-bytes = 8192
+
+[[tool.nox-python-standards.docs.budgets]]
+include = ["ARCHITECTURE.md"]
+max-bytes = 16384
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "README.md"
+targets = ["docs/README.md"]
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "AGENTS.md"
+targets = ["ARCHITECTURE.md"]
+
+[[tool.nox-python-standards.docs.navigation]]
+path = "ARCHITECTURE.md"
+targets = ["docs/README.md"]
+
+[[tool.nox-python-standards.docs.catalogs]]
+path = "docs/README.md"
+include = ["docs/**/*.md", "*.md"]
+exclude = ["AGENTS.md", "README.md", "ARCHITECTURE.md", "docs/generated/**"]
+require-content-check = true
+
+[[tool.nox-python-standards.docs.catalogs.tables]]
+columns = ["Document", "Status", "Read when", "Authority"]
+document-column = "Document"
+path-columns = ["Authority"]
+accepted-values = { Status = [
+    "Current",
+    "Planned (not implemented)",
+    "Generated (projection only)",
+    "Decision history",
+] }
+
+[[tool.nox-python-standards.docs.routers]]
+path = "ARCHITECTURE.md"
+section = "Task router"
+columns = ["Task", "Read", "Implementation authority"]
+link-columns = ["Read"]
+path-columns = ["Implementation authority"]
+
+[[tool.nox-python-standards.docs.metadata]]
+include = ["docs/workflows/**/*.md"]
+exclude = ["**/README.md"]
+fields = ["Status", "Read when", "Authority"]
+path-fields = ["Authority"]
+accepted-values = { Status = ["Current", "Planned (not implemented)"] }
+
+[[tool.nox-python-standards.docs.metadata.path-groups]]
+name = "implementation"
+section = "Code and tests"
+include = ["application/**/*.py"]
+directories = false
+
+[[tool.nox-python-standards.docs.metadata.path-groups]]
+name = "tests"
+section = "Code and tests"
+include = ["test", "test/**"]
+directories = true
