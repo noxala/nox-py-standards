@@ -64,3 +64,14 @@ jobs:
         run: uv run --locked pytest
       - name: Verify wheel and sdist isolation
         run: uv run --locked python tools/verify_distribution.py
+
+  ci-gate:
+    if: always()
+    needs: [quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all quality checks
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+        run: test "$QUALITY_RESULT" = success
