@@ -3,8 +3,8 @@ requires = ["setuptools>=80"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "nox-python-standards"
-version = "0.4.1"
+name = "nox-py-standards"
+version = "0.4.2"
 description = "Check and sync complete local copies of Noxala Python standards"
 readme = "README.md"
 license = "0BSD"
@@ -13,8 +13,8 @@ requires-python = ">=3.14.10,<3.15"
 dependencies = ["tomlkit==0.15.0"]
 
 [project.urls]
-Repository = "https://github.com/noxala/nox-python-standards"
-Issues = "https://github.com/noxala/nox-python-standards/issues"
+Repository = "https://github.com/noxala/nox-py-standards"
+Issues = "https://github.com/noxala/nox-py-standards/issues"
 
 [project.scripts]
 nox-py-standards = "nox_python_standards.cli:main"

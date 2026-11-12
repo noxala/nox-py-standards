@@ -368,5 +368,5 @@ existing [publishing procedure](../README.md#publishing). A preparation PR or or
 merge does not publish to PyPI. Follow the Publish run through its Linux/macOS
 quality, build/metadata, and PyPI upload jobs; confirm the published distributions
 before updating consumers. COMO rollout is tracked separately in
-[issue #10](https://github.com/noxala/nox-python-standards/issues/10), including the
+[issue #10](https://github.com/noxala/nox-py-standards/issues/10), including the
 pin/lockfile, complete local policy, and representative failure checks.

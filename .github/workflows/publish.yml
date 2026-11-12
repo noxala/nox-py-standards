@@ -30,7 +30,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    uses: noxala/nox-python-standards/.github/workflows/publish-python.yml@master
+    uses: noxala/nox-py-standards/.github/workflows/publish-python.yml@master
     with:
       tag: ${{ github.event.release.tag_name || inputs.tag }}
       attach-github-assets: ${{ github.event_name != 'workflow_dispatch' || !inputs.registry-only }}
