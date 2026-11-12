@@ -25,7 +25,8 @@ concurrency:
 
 jobs:
   publish:
-    # The cloud policy accepts only this reusable publisher from master.
+    # Reusable workflows are exempt from the action SHA policy.
+    # The cloud policy requires this publisher from protected master.
     permissions:
       contents: write
       id-token: write
