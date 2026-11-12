@@ -1,0 +1,267 @@
+name: Publish private Python package
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing release tag to validate, build and publish
+        required: true
+        type: string
+
+      attach-github-assets:
+        description: Attach newly built files to GitHub as well as the private registry
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ inputs.tag }}
+  ATTACH_GITHUB_ASSETS: ${{ inputs.attach-github-assets }}
+
+jobs:
+  resolve:
+    name: Resolve release source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      release-id: ${{ steps.release.outputs.release-id }}
+    steps:
+      - name: Resolve the existing release and tag
+        id: release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            if (context.repo.owner !== 'noxala' || context.repo.repo !== 'nox-python-standards') {
+              throw new Error('Only noxala/nox-python-standards may use this publisher.');
+            }
+            if (!['release', 'workflow_dispatch'].includes(context.eventName)) {
+              throw new Error('Publishing requires a release or manual release backfill.');
+            }
+            const tag = process.env.RELEASE_TAG;
+            if (context.eventName === 'release' && tag !== context.payload.release.tag_name) {
+              throw new Error('The requested tag differs from the triggering release.');
+            }
+            const {data: release} = await github.rest.repos.getReleaseByTag({
+              ...context.repo, tag,
+            });
+            if (release.immutable && process.env.ATTACH_GITHUB_ASSETS === 'true') {
+              throw new Error('This release is immutable; use registry-only to retain its GitHub assets.');
+            }
+            const {data: ref} = await github.rest.git.getRef({
+              ...context.repo, ref: `tags/${tag}`,
+            });
+            let object = ref.object;
+            while (object.type === 'tag') {
+              const {data: annotated} = await github.rest.git.getTag({
+                ...context.repo, tag_sha: object.sha,
+              });
+              object = annotated.object;
+            }
+            if (object.type !== 'commit') throw new Error('The tag must resolve to a commit.');
+            const {data: master} = await github.rest.git.getRef({
+              ...context.repo, ref: 'heads/master',
+            });
+            const {data: comparison} = await github.rest.repos.compareCommitsWithBasehead({
+              ...context.repo, basehead: `${object.sha}...${master.object.sha}`,
+            });
+            if (!['ahead', 'identical'].includes(comparison.status) ||
+                comparison.merge_base_commit.sha !== object.sha) {
+              throw new Error('The tagged source must already be merged to master.');
+            }
+            core.setOutput('commit', object.sha);
+            core.setOutput('release-id', String(release.id));
+            core.info(`Building ${tag} from ${object.sha}`);
+
+  quality:
+    needs: resolve
+    uses: ./.github/workflows/ci.yml
+    with:
+      checkout-ref: ${{ needs.resolve.outputs.commit }}
+
+  publish:
+    name: Build release assets and publish private package
+    needs: [resolve, quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the exact tagged commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.13.6"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install 3.14.10
+
+      - name: Verify the tag matches the package version
+        run: |
+          release_python=$(uv python find 3.14.10)
+          "$release_python" - <<'PY'
+          import os
+          from pathlib import Path
+          import tomllib
+
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          if project["name"] != "nox-python-standards":
+              raise SystemExit("Only the nox-python-standards distribution may be published")
+          if project["license"] != "0BSD":
+              raise SystemExit("Release license must be 0BSD")
+          expected = "v" + project["version"]
+          if os.environ["RELEASE_TAG"] != expected:
+              raise SystemExit(f"Release tag must match package version: expected {expected}")
+          PY
+
+      - name: Verify source was merged to master
+        run: git merge-base --is-ancestor HEAD origin/master
+
+      - name: Build wheel and source distribution
+        run: |
+          SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)
+          export SOURCE_DATE_EPOCH
+          uv build --no-sources --out-dir dist --clear
+          # Setuptools sdists retain filesystem times/ownership. Canonicalize
+          # archive metadata with standard GNU tools so retries have identical bytes.
+          archive_dir=$(mktemp -d)
+          trap 'rm -rf "$archive_dir"' EXIT
+          sdist=(dist/*.tar.gz)
+          test "${#sdist[@]}" = 1
+          archive_root=$(basename "${sdist[0]}" .tar.gz)
+          tar -xzf "${sdist[0]}" -C "$archive_dir"
+          tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 \
+            --numeric-owner --format=gnu -C "$archive_dir" -cf - "$archive_root" \
+            | gzip -n > "${sdist[0]}.normalized"
+          mv "${sdist[0]}.normalized" "${sdist[0]}"
+          release_python=$(uv python find 3.14.10)
+          "$release_python" - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          wheels = sorted(Path("dist").glob("*.whl"))
+          sdists = sorted(Path("dist").glob("*.tar.gz"))
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit("Expected exactly one wheel and one source distribution")
+          paths = wheels + sdists
+          checksums = "".join(
+              f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
+              for path in paths
+          )
+          Path("dist/SHA256SUMS").write_text(checksums)
+          PY
+
+      - name: Check distribution metadata and README
+        run: uvx --from twine==6.2.0 twine check --strict dist/*.whl dist/*.tar.gz
+
+      - name: Preserve build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Attach artifacts to the release
+        uses: actions/github-script@v8
+        env:
+          RELEASE_ID: ${{ needs.resolve.outputs.release-id }}
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const crypto = require('node:crypto');
+            const tag = process.env.RELEASE_TAG;
+            const releaseId = Number(process.env.RELEASE_ID);
+            const {data: release} = await github.rest.repos.getReleaseByTag({
+              ...context.repo, tag,
+            });
+            if (release.id !== releaseId ||
+                (release.immutable && process.env.ATTACH_GITHUB_ASSETS === 'true')) {
+              throw new Error('The target release changed while building; no assets were uploaded.');
+            }
+            const {data: ref} = await github.rest.git.getRef({
+              ...context.repo, ref: `tags/${tag}`,
+            });
+            let object = ref.object;
+            while (object.type === 'tag') {
+              const {data: annotated} = await github.rest.git.getTag({
+                ...context.repo, tag_sha: object.sha,
+              });
+              object = annotated.object;
+            }
+            if (object.type !== 'commit' || object.sha !== process.env.RELEASE_COMMIT) {
+              throw new Error('The release tag moved while building; no assets were uploaded.');
+            }
+            const existing = await github.paginate(github.rest.repos.listReleaseAssets, {
+              ...context.repo, release_id: releaseId, per_page: 100,
+            });
+            const files = fs.readdirSync('dist').filter(name =>
+              name.endsWith('.whl') || name.endsWith('.tar.gz') || name === 'SHA256SUMS'
+            ).sort().map(name => {
+              const data = fs.readFileSync(`dist/${name}`);
+              const digest = `sha256:${crypto.createHash('sha256').update(data).digest('hex')}`;
+              const asset = existing.find(asset => asset.name === name);
+              // Legacy GitHub sdists are not reproducible. A registry-only
+              // backfill verifies the stable wheel and retains those old assets.
+              const verifyAsset = process.env.ATTACH_GITHUB_ASSETS === 'true' || name.endsWith('.whl');
+              if (verifyAsset && asset && (asset.state !== 'uploaded' || asset.digest !== digest)) {
+                const recovery = name.endsWith('.whl') ? '' : ' For legacy releases, use registry-only to retain GitHub assets.';
+                throw new Error(`Existing asset ${name} differs or cannot be verified; it was not overwritten.${recovery}`);
+              }
+              return {name, data, asset};
+            });
+            if (process.env.ATTACH_GITHUB_ASSETS !== 'true') {
+              core.info('Registry-only backfill: existing GitHub assets retained.');
+              return;
+            }
+            for (const {name, data, asset} of files) {
+              if (asset) {
+                core.info(`Already attached with matching SHA256: ${name}`);
+                continue;
+              }
+              await github.rest.repos.uploadReleaseAsset({
+                ...context.repo, release_id: releaseId, name, data,
+                headers: {'content-type': 'application/octet-stream'},
+              });
+              core.info(`Attached ${name}`);
+            }
+            await core.summary.addHeading(`Release assets: ${tag}`)
+              .addRaw(`Built and checked commit ${process.env.RELEASE_COMMIT}.\n\n`)
+              .addLink('View release', release.html_url).write();
+
+      # This job is loaded from protected master. Do not authenticate in the
+      # tag-controlled caller, or accept caller-built distributions.
+      - name: Authenticate to private Artifact Registry
+        id: registry-auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: prj-noxala-org-bootstrap-e7b2
+          workload_identity_provider: projects/1017858744225/locations/global/workloadIdentityPools/noxala-org-python/providers/publisher
+          audience: https://iam.googleapis.com/projects/1017858744225/locations/global/workloadIdentityPools/noxala-org-python/providers/publisher
+          create_credentials_file: false
+          export_environment_variables: false
+
+      - name: Publish checked distributions
+        env:
+          UV_PUBLISH_USERNAME: oauth2accesstoken
+          UV_PUBLISH_PASSWORD: ${{ steps.registry-auth.outputs.auth_token }}
+        run: |
+          uv publish --no-config --trusted-publishing never \
+            --publish-url https://us-central1-python.pkg.dev/prj-noxala-org-bootstrap-e7b2/noxala-org-python/ \
+            --check-url https://us-central1-python.pkg.dev/prj-noxala-org-bootstrap-e7b2/noxala-org-python/simple/ \
+            dist/*.whl dist/*.tar.gz

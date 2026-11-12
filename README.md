@@ -8,13 +8,14 @@ files. Each repository owns its Makefile, hooks, CI and native tool commands.
 Use the Python/uv versions in [pyproject.toml](pyproject.toml), Git, and Node.js
 on PATH for `check`.
 
-Add development dependencies with an exact PyPI version and the
+Configure authenticated access to the private registry (see [publishing](#publishing)),
+then add development dependencies with an exact version and the
 [approved tool versions](src/nox_python_standards/resources/versions.json):
 
 ```toml
 [dependency-groups]
 dev = [
-    "nox-python-standards==0.4.0",
+    "nox-python-standards==0.4.1",
     "ruff==0.15.14",
     "pyright==1.1.411",
 ]
@@ -127,21 +128,35 @@ and `quality (macOS)`.
 
 ## Publishing
 
-Licensed under [0BSD](LICENSE). Releases publish wheels and sdists to
-[PyPI](https://pypi.org/project/nox-python-standards/) through GitHub OIDC;
-no persistent PyPI token is needed.
+Licensed under [0BSD](LICENSE). Releases publish wheels and sdists to the private
+Google Artifact Registry `noxala-org-python` in `us-central1`, project
+`prj-noxala-org-bootstrap-e7b2`. No PyPI upload or stored publishing secret is used.
 
-One-time setup: on your [PyPI publishing page](https://pypi.org/manage/account/publishing/),
-add a pending GitHub publisher with project `nox-python-standards`, owner `noxala`,
-repository `nox-python-standards`, workflow `publish.yml`, and environment `pypi`.
-The GitHub repository must have the matching `pypi` environment.
+Before the first upload, extend and apply the organization
+[registry access contract](https://github.com/noxala/gcp-infrastructure/blob/master/docs/PYTHON_PACKAGES.md)
+to admit this repository's immutable numeric identity, caller
+`noxala/nox-python-standards/.github/workflows/publish.yml`, and reusable publisher
+`noxala/nox-python-standards/.github/workflows/publish-python.yml@refs/heads/master`.
+The existing cloud policy admits only `nox-py-common`; these workflows alone do
+not grant access. Local installation and consumer CI also need reviewed reader
+access and a resolver-scoped private index; keep public dependencies on PyPI.
 
 For each release, update `project.version` and this installation example, run
 `uv lock`, and merge through the required checks. Publish a GitHub release tagged
-`v<version>` at that merged commit. [Publish](.github/workflows/publish.yml)
-reruns Linux/macOS quality checks, requires the tag to match the package version
-and belong to `master`, builds distributions, then uploads through the `pypi`
-environment. To publish an existing tag, run Publish manually from `master`
-with that tag. A failed upload can be retried before either file is published;
-after a partial upload, inspect PyPI before retrying. Published files cannot be
-overwritten; subsequent changes need a new version.
+`v<version>` at that merged commit. [Release assets](.github/workflows/publish.yml)
+calls the [private publisher](.github/workflows/publish-python.yml) from protected
+`master`. It resolves the exact tagged commit, requires merged source and a matching
+package name/version, reruns Linux/macOS quality checks, then builds distributions.
+Only after validation does it authenticate through Google workload federation and
+upload. It also attaches the wheel, sdist and `SHA256SUMS` to the GitHub release.
+
+For the next release, publish `v0.4.1` after merging. For an existing tag, run
+**Actions → Release assets → Run workflow** from `master` with that tag. Select
+`registry-only` to retain existing GitHub assets, including immutable releases.
+The rebuilt wheel must match any existing wheel asset. Source archive timestamps,
+ownership and gzip metadata are normalized for reproducible retries. Matching
+registry files are skipped; different bytes fail without overwriting anything.
+
+Verify a successful live upload and authenticated consumer installs before making
+the repository private or deleting existing PyPI releases. Existing consumers
+and lockfiles must be migrated separately; this change does not update them.

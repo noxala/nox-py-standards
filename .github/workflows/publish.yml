@@ -1,4 +1,4 @@
-name: Publish
+name: Release assets
 
 on:
   release:
@@ -6,77 +6,30 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag (v<project.version>) on master
+        description: Existing release tag to build
         required: true
         type: string
+
+      registry-only:
+        description: Backfill private registry while retaining existing GitHub assets
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-${{ github.event.release.tag_name || inputs.tag }}
+  group: release-assets-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
-  quality:
-    uses: ./.github/workflows/ci.yml
-    with:
-      checkout-ref: refs/tags/${{ github.event.release.tag_name || inputs.tag }}
-
-  build:
-    needs: quality
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: refs/tags/${{ github.event.release.tag_name || inputs.tag }}
-          fetch-depth: 0
-      - uses: astral-sh/setup-uv@v7
-        with:
-          version: "0.13.6"
-      - name: Install Python
-        run: uv python install 3.14.10
-      - name: Validate release tag and merged source
-        run: |
-          uv run --no-project --python 3.14.10 python - <<'PY'
-          import os
-          import pathlib
-          import tomllib
-
-          project = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]
-          expected = f"v{project['version']}"
-          if os.environ["RELEASE_TAG"] != expected:
-              raise SystemExit(f"Release tag must be {expected}")
-          if project["license"] != "0BSD":
-              raise SystemExit("Release license must be 0BSD")
-          PY
-          git merge-base --is-ancestor HEAD origin/master
-      - name: Build wheel and sdist
-        run: uv build
-      - name: Check PyPI metadata and README
-        run: uvx --from twine==6.2.0 twine check --strict dist/*
-      - uses: actions/upload-artifact@v4
-        with:
-          name: distributions
-          path: dist/*
-          if-no-files-found: error
-
   publish:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment:
-      name: pypi
-      url: https://pypi.org/project/nox-python-standards/
+    # The cloud policy accepts only this reusable publisher from master.
     permissions:
+      contents: write
       id-token: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: distributions
-          path: dist/
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+    uses: noxala/nox-python-standards/.github/workflows/publish-python.yml@master
+    with:
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      attach-github-assets: ${{ github.event_name != 'workflow_dispatch' || !inputs.registry-only }}
