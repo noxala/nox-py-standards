@@ -174,7 +174,7 @@ def test_version_does_not_need_consumer_policy(
     with pytest.raises(SystemExit) as result:
         main(["--version"])
     assert result.value.code == 0
-    assert "0.4.1" in capsys.readouterr().out
+    assert "0.4.2" in capsys.readouterr().out
 
 
 def test_complete_compact_documentation_example(docs_consumer: Path) -> None:

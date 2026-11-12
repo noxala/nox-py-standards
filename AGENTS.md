@@ -1,4 +1,4 @@
-# nox-python-standards
+# nox-py-standards
 
 `nox-py-standards` exposes only `check` and `sync`; consumers own tool execution.
 `nox-docs-check` separately checks repository-owned documentation policy.

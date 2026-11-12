@@ -35,8 +35,8 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
-            if (context.repo.owner !== 'noxala' || context.repo.repo !== 'nox-python-standards') {
-              throw new Error('Only noxala/nox-python-standards may use this publisher.');
+            if (context.repo.owner !== 'noxala' || context.repo.repo !== 'nox-py-standards') {
+              throw new Error('Only noxala/nox-py-standards may use this publisher.');
             }
             if (!['release', 'workflow_dispatch'].includes(context.eventName)) {
               throw new Error('Publishing requires a release or manual release backfill.');
@@ -120,8 +120,8 @@ jobs:
           import tomllib
 
           project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
-          if project["name"] != "nox-python-standards":
-              raise SystemExit("Only the nox-python-standards distribution may be published")
+          if project["name"] != "nox-py-standards":
+              raise SystemExit("Only the nox-py-standards distribution may be published")
           if project["license"] != "0BSD":
               raise SystemExit("Release license must be 0BSD")
           expected = "v" + project["version"]

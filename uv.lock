@@ -30,8 +30,8 @@ wheels = [
 ]
 
 [[package]]
-name = "nox-python-standards"
-version = "0.4.1"
+name = "nox-py-standards"
+version = "0.4.2"
 source = { editable = "." }
 dependencies = [
     { name = "tomlkit" },

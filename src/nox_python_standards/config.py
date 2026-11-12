@@ -29,7 +29,7 @@ def resource(name: str) -> str:
 
 
 def release_version() -> str:
-    return metadata.version("nox-python-standards")
+    return metadata.version("nox-py-standards")
 
 
 def policy() -> dict[str, object]:
@@ -228,7 +228,7 @@ class Configuration:
             )
         if problems:
             raise StandardsError(
-                f"nox-python-standards {release_version()} in {self.root}:\n"
+                f"nox-py-standards {release_version()} in {self.root}:\n"
                 + "\n".join(problems)
                 + "\nReview drift, then explicitly run nox-py-standards sync."
             )

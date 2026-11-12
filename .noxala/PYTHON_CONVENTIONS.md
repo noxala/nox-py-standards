@@ -1,6 +1,6 @@
 # Noxala Python conventions
 
-Versioned by the installed `nox-python-standards` release. `nox-py-standards check`
+Versioned by the installed `nox-py-standards` release. `nox-py-standards check`
 verifies this snapshot; explicit `sync` adopts it. Review and commit changes.
 
 ## Tool policy

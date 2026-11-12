@@ -1,7 +1,13 @@
-# nox-python-standards
+# nox-py-standards
 
 Shared Noxala Python settings, checked against complete local `pyproject.toml`
 files. Each repository owns its Makefile, hooks, CI and native tool commands.
+
+From 0.4.2, the distribution is named `nox-py-standards`, matching its GitHub
+repository and CLI. Published files use the `nox_py_standards` prefix. The Python
+import namespace remains `nox_python_standards`, and configuration continues to
+use `[tool.nox-python-standards]`. Replace the old dependency name when upgrading;
+existing release tags and artifacts are not renamed or overwritten.
 
 ## Install and adopt
 
@@ -15,7 +21,7 @@ then add development dependencies with an exact version and the
 ```toml
 [dependency-groups]
 dev = [
-    "nox-python-standards==0.4.1",
+    "nox-py-standards==0.4.2",
     "ruff==0.15.14",
     "pyright==1.1.411",
 ]
@@ -135,8 +141,8 @@ Google Artifact Registry `noxala-org-python` in `us-central1`, project
 Before the first upload, extend and apply the organization
 [registry access contract](https://github.com/noxala/gcp-infrastructure/blob/master/docs/PYTHON_PACKAGES.md)
 to admit this repository's immutable numeric identity, caller
-`noxala/nox-python-standards/.github/workflows/publish.yml`, and reusable publisher
-`noxala/nox-python-standards/.github/workflows/publish-python.yml@refs/heads/master`.
+`noxala/nox-py-standards/.github/workflows/publish.yml`, and reusable publisher
+`noxala/nox-py-standards/.github/workflows/publish-python.yml@refs/heads/master`.
 The existing cloud policy admits only `nox-py-common`; these workflows alone do
 not grant access. Local installation and consumer CI also need reviewed reader
 access and a resolver-scoped private index; keep public dependencies on PyPI.
@@ -150,12 +156,17 @@ package name/version, reruns Linux/macOS quality checks, then builds distributio
 Only after validation does it authenticate through Google workload federation and
 upload. It also attaches the wheel, sdist and `SHA256SUMS` to the GitHub release.
 
-For the next release, publish `v0.4.1` after merging. For an existing tag, run
+For the renamed distribution, publish `v0.4.2` after merging. The release assets
+will be `nox_py_standards-0.4.2-py3-none-any.whl` and
+`nox_py_standards-0.4.2.tar.gz`. For an existing tag of the renamed distribution, run
 **Actions → Release assets → Run workflow** from `master` with that tag. Select
 `registry-only` to retain existing GitHub assets, including immutable releases.
 The rebuilt wheel must match any existing wheel asset. Source archive timestamps,
 ownership and gzip metadata are normalized for reproducible retries. Matching
 registry files are skipped; different bytes fail without overwriting anything.
+
+Tags before 0.4.2 contain the old distribution name and are rejected by the renamed
+publisher. Publish the new release instead of moving old tags or renaming old files.
 
 Verify a successful live upload and authenticated consumer installs before making
 the repository private or deleting existing PyPI releases. Existing consumers

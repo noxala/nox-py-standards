@@ -32,9 +32,7 @@ def main(arguments: list[str] | None = None) -> int:
         else:
             configuration.check()
             check_versions(configuration)
-        sys.stdout.write(
-            f"nox-python-standards {release_version()}: {command} passed\n"
-        )
+        sys.stdout.write(f"nox-py-standards {release_version()}: {command} passed\n")
         return 0
     except (StandardsError, OSError, UnicodeError) as exc:
         sys.stderr.write(f"nox-py-standards: {exc}\n")

@@ -210,11 +210,12 @@ def verify(root: Path, temporary: Path) -> None:
             if name.endswith(".dist-info/licenses/LICENSE")
         )
         if (
-            metadata["License-Expression"] != "0BSD"
+            metadata["Name"] != "nox-py-standards"
+            or metadata["License-Expression"] != "0BSD"
             or metadata.get_all("License-File") != ["LICENSE"]
             or archive.read(license_path) != (root / "LICENSE").read_bytes()
         ):
-            raise RuntimeError("Wheel license metadata or text differs from 0BSD")
+            raise RuntimeError("Wheel distribution name or 0BSD license differs")
     extracted = temporary / "extracted"
     with tarfile.open(sdist) as archive:
         if not required <= {Path(member.name).name for member in archive.getmembers()}:
@@ -293,7 +294,7 @@ def verify(root: Path, temporary: Path) -> None:
             "assert util.find_spec('pyright') is None; "
             "assert util.find_spec('nox_python_standards.headers') is None; "
             "assert util.find_spec('nox_python_standards.hooks') is None; "
-            "assert metadata.requires('nox-python-standards') == ['tomlkit==0.15.0']",
+            "assert metadata.requires('nox-py-standards') == ['tomlkit==0.15.0']",
         ],
         cwd=consumer,
         env=env,
