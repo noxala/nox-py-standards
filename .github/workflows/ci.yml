@@ -66,6 +66,11 @@ jobs:
         run: uv run --locked python tools/verify_distribution.py
 
   cleanup-tests:
+    # Exercise the queue mode used by mutation jobs in actual GitHub CI.
+    concurrency:
+      group: cleanup-contract-tests-${{ inputs.checkout-ref || github.ref }}
+      cancel-in-progress: false
+      queue: max
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

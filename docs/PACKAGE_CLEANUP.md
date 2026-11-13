@@ -25,7 +25,8 @@ The GitHub token has Contents write permission so drafts are visible; the helper
 uses only GitHub GET requests and never edits releases, tags or repository files.
 
 Each deletion acquires `package-version-<canonical version>`, the same concurrency
-group as the private publisher. After acquiring it, cleanup rechecks releases and
+group as the private publisher. These groups use `queue: max` to retain pending
+publication and cleanup jobs ([GitHub queue semantics](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)). After acquiring it, cleanup rechecks releases and
 the exact version tag before deleting. Recreated releases are retained. Registry
 deletion waits for the operation to finish; already absent versions are harmless
 on retries. Failures stop the affected job; completed deletions stay completed.

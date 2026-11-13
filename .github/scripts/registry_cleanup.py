@@ -16,7 +16,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from packaging.version import InvalidVersion, Version
 
-ROOT = "projects/prj-noxala-org-bootstrap-e7b2/locations/us-central1"
+PROJECT = "prj-noxala-org-bootstrap-e7b2"
+ROOT = f"projects/{PROJECT}/locations/us-central1"
 NUMBER_ROOT = "projects/1017858744225/locations/us-central1"
 REGISTRY = ROOT + "/repositories/noxala-org-python"
 REPOSITORIES = {
@@ -129,6 +130,7 @@ class Client:
             "https://artifactregistry.googleapis.com/v1/" + name + query,
             {
                 "Authorization": f"Bearer {self.google_token}",
+                "X-Goog-User-Project": PROJECT,
             },
         )
 

@@ -216,6 +216,7 @@ def test_deletion_waits_for_the_operation_and_keeps_tokens_on_their_hosts() -> N
     assert queue.calls[3][1].endswith("/packages/nox-tach/versions/0.8.0")
     assert queue.calls[0][2]["Authorization"] == "Bearer github-test"
     assert queue.calls[3][2]["Authorization"] == "Bearer google-test"
+    assert queue.calls[3][2]["X-Goog-User-Project"] == cleanup.PROJECT
     assert (
         queue.calls[4][1] == "https://artifactregistry.googleapis.com/v1/" + operation
     )
