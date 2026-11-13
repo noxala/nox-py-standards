@@ -29,6 +29,7 @@ jobs:
     outputs:
       commit: ${{ steps.release.outputs.commit }}
       release-id: ${{ steps.release.outputs.release-id }}
+      package-version: ${{ steps.version.outputs.version }}
     steps:
       - name: Resolve the existing release and tag
         id: release
@@ -40,6 +41,9 @@ jobs:
             }
             if (!['release', 'workflow_dispatch'].includes(context.eventName)) {
               throw new Error('Publishing requires a release or manual release backfill.');
+            }
+            if (context.eventName === 'release' && context.payload.action !== 'published') {
+              throw new Error('Publishing requires the published release action.');
             }
             const tag = process.env.RELEASE_TAG;
             if (context.eventName === 'release' && tag !== context.payload.release.tag_name) {
@@ -76,6 +80,21 @@ jobs:
             core.setOutput('release-id', String(release.id));
             core.info(`Building ${tag} from ${object.sha}`);
 
+      - name: Check out trusted cleanup/version tooling
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: '0.13.6'
+          enable-cache: false
+      - name: Normalize the package version for publication/cleanup serialization
+        id: version
+        run: |
+          resolved_package_version=$(uv run --no-project --python 3.14.10 --with packaging==26.3 python .github/scripts/registry_cleanup.py normalize --tag "$RELEASE_TAG")
+          printf 'version=%s\n' "$resolved_package_version" >> "$GITHUB_OUTPUT"
+
   quality:
     needs: resolve
     uses: ./.github/workflows/ci.yml
@@ -85,6 +104,9 @@ jobs:
   publish:
     name: Build release assets and publish private package
     needs: [resolve, quality]
+    concurrency:
+      group: package-version-${{ needs.resolve.outputs.package-version }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

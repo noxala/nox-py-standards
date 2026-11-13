@@ -1,0 +1,99 @@
+name: Reconcile private package versions
+
+on:
+  workflow_call:
+    inputs:
+      dry_run:
+        description: List orphan versions without deleting them
+        type: boolean
+        default: true
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List orphan versions without deleting them
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-cleanup
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      # GitHub requires push access to include draft releases in the inventory.
+      contents: write
+      id-token: write
+    outputs:
+      versions: ${{ steps.plan.outputs.versions }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: '0.13.6'
+          enable-cache: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        id: auth
+        with:
+          project_id: prj-noxala-org-bootstrap-e7b2
+          workload_identity_provider: projects/1017858744225/locations/global/workloadIdentityPools/noxala-org-python/providers/cleanup
+          audience: https://iam.googleapis.com/projects/1017858744225/locations/global/workloadIdentityPools/noxala-org-python/providers/cleanup
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Find registry versions with no GitHub release
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PACKAGE_CLEANUP_TOKEN: ${{ steps.auth.outputs.auth_token }}
+        run: uv run --no-project --python 3.14.10 --with packaging==26.3 python .github/scripts/registry_cleanup.py plan
+
+  delete:
+    needs: plan
+    if: needs.plan.outputs.versions != '[]' && (github.event_name == 'schedule' || !inputs.dry_run)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        version: ${{ fromJSON(needs.plan.outputs.versions) }}
+    # The publisher uses this same canonical PEP 440 version key.
+    concurrency:
+      group: package-version-${{ matrix.version }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: '0.13.6'
+          enable-cache: false
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        id: auth
+        with:
+          project_id: prj-noxala-org-bootstrap-e7b2
+          workload_identity_provider: projects/1017858744225/locations/global/workloadIdentityPools/noxala-org-python/providers/cleanup
+          audience: https://iam.googleapis.com/projects/1017858744225/locations/global/workloadIdentityPools/noxala-org-python/providers/cleanup
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Recheck the release and delete only its orphan version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PACKAGE_CLEANUP_TOKEN: ${{ steps.auth.outputs.auth_token }}
+          CLEANUP_VERSION: ${{ matrix.version }}
+        run: uv run --no-project --python 3.14.10 --with packaging==26.3 python .github/scripts/registry_cleanup.py delete --version "$CLEANUP_VERSION"

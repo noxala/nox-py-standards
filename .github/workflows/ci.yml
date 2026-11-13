@@ -65,13 +65,29 @@ jobs:
       - name: Verify wheel and sdist isolation
         run: uv run --locked python tools/verify_distribution.py
 
+  cleanup-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.checkout-ref || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        with:
+          version: '0.13.6'
+          enable-cache: false
+      - name: Test private package cleanup without cloud credentials
+        run: uv run --no-project --python 3.14.10 --with packaging==26.3 --with pytest==9.0.3 python -m pytest -q .github/scripts
+
   ci-gate:
     if: always()
-    needs: [quality]
+    needs: [quality, cleanup-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require all quality checks
         env:
           QUALITY_RESULT: ${{ needs.quality.result }}
-        run: test "$QUALITY_RESULT" = success
+          CLEANUP_RESULT: ${{ needs.cleanup-tests.result }}
+        run: test "$QUALITY_RESULT" = success && test "$CLEANUP_RESULT" = success

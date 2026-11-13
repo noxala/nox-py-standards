@@ -33,7 +33,7 @@ nox_python_standards = ["resources/*.json", "resources/*.md", "py.typed"]
 required-version = ">=0.13.6"
 
 [tool.nox-python-standards]
-sources = ["src", "test", "tools"]
+sources = ["src", "test", "tools", ".github/scripts"]
 dependency-group = "dev"
 
 [tool.nox-python-standards.ruff]
@@ -96,9 +96,9 @@ known-third-party = []
 typeCheckingMode = "strict"
 reportMissingImports = "error"
 reportMissingTypeStubs = false
-include = ["src", "test", "tools"]
+include = ["src", "test", "tools", ".github/scripts"]
 exclude = ["build", "dist", ".venv"]
-extraPaths = ["src"]
+extraPaths = ["src", ".github/scripts"]
 pythonVersion = "3.14"
 venvPath = "."
 venv = ".venv"

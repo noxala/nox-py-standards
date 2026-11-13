@@ -171,3 +171,11 @@ publisher. Publish the new release instead of moving old tags or renaming old fi
 Verify a successful live upload and authenticated consumer installs before making
 the repository private or deleting existing PyPI releases. Existing consumers
 and lockfiles must be migrated separately; this change does not update them.
+
+
+## Private package cleanup
+
+Deleting a GitHub release also removes its private package version through the
+[cleanup workflow and daily reconciliation](docs/PACKAGE_CLEANUP.md). Existing
+releases, including drafts, preserve their versions. Removing a release can break
+consumers still pinned to it; move those consumers before intentional removal.
