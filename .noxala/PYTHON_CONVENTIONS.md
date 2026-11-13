@@ -18,6 +18,8 @@ Makefiles, hooks and source-header helpers.
 
 These are review conventions, not an additional AST checker.
 
+- Keep imports at module scope; Ruff PLC0415 rejects imports inside functions
+  and other blocks.
 - Use supported modern syntax, built-in generics and PEP 695.
 - Type fully for strict Pyright, without `Unknown`.
 - Check nullability with `is None` / `is not None`.
