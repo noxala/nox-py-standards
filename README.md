@@ -21,7 +21,7 @@ then add development dependencies with an exact version and the
 ```toml
 [dependency-groups]
 dev = [
-    "nox-py-standards==0.4.2",
+    "nox-py-standards==0.4.3",
     "ruff==0.15.14",
     "pyright==1.1.411",
 ]
@@ -70,6 +70,9 @@ the `nox-py-standards check/sync` command contract or run consumer tools.
 Complete [compact](docs/examples/compact.toml) and
 [progressive-disclosure](docs/examples/progressive.toml) policy examples are tested
 in CI; adapt them explicitly to the consuming repository.
+
+Release 0.4.3 enables Ruff `PLC0415` (`import-outside-top-level`) in the shared
+policy. Consumer adoption flags imports inside functions and other blocks.
 
 ## Native fix policy
 
@@ -156,9 +159,9 @@ package name/version, reruns Linux/macOS quality checks, then builds distributio
 Only after validation does it authenticate through Google workload federation and
 upload. It also attaches the wheel, sdist and `SHA256SUMS` to the GitHub release.
 
-For the renamed distribution, publish `v0.4.2` after merging. The release assets
-will be `nox_py_standards-0.4.2-py3-none-any.whl` and
-`nox_py_standards-0.4.2.tar.gz`. For an existing tag of the renamed distribution, run
+For this release, publish `v0.4.3` after merging. The release assets
+will be `nox_py_standards-0.4.3-py3-none-any.whl` and
+`nox_py_standards-0.4.3.tar.gz`. For an existing tag of the renamed distribution, run
 **Actions → Release assets → Run workflow** from `master` with that tag. Select
 `registry-only` to retain existing GitHub assets, including immutable releases.
 The rebuilt wheel must match any existing wheel asset. Source archive timestamps,

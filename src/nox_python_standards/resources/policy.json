@@ -13,7 +13,7 @@
   "ruff.format.line-ending": "lf",
   "ruff.format.skip-magic-trailing-comma": false,
   "ruff.format.docstring-code-format": true,
-  "ruff.lint.select": ["A", "B", "DTZ", "E", "F", "I", "LOG", "N", "PGH", "PIE", "PT", "RET", "RUF", "SIM", "SLF", "T20", "UP", "W"],
+  "ruff.lint.select": ["A", "B", "DTZ", "E", "F", "I", "LOG", "N", "PGH", "PIE", "PLC0415", "PT", "RET", "RUF", "SIM", "SLF", "T20", "UP", "W"],
   "ruff.lint.ignore": [],
   "ruff.lint.extend-ignore": ["RET504", "SIM102", "SIM103", "SIM108", "SIM110"],
   "ruff.lint.isort.combine-as-imports": true,
