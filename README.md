@@ -150,17 +150,24 @@ The existing cloud policy admits only `nox-py-common`; these workflows alone do
 not grant access. Local installation and consumer CI also need reviewed reader
 access and a resolver-scoped private index; keep public dependencies on PyPI.
 
+Merging a change to `[project].version` in `pyproject.toml` into `master`
+automatically creates `v<version>` at that exact commit and starts the existing
+release publisher. No separate release approval, personal token or stored key is
+needed. Other metadata edits do not trigger a release. The publisher runs its full
+checks before uploading to Artifact Registry. Each version-bump push is retained;
+rerun its **Automatic package release** run to retry a failed dispatch. Existing
+tags must resolve to the same commit and are never moved. Existing draft releases
+fail for explicit reconciliation. An unchanged version creates no release.
+
 For each release, update `project.version` and this installation example, run
-`uv lock`, and merge through the required checks. Publish a GitHub release tagged
-`v<version>` at that merged commit. [Release assets](.github/workflows/publish.yml)
+`uv lock`, and merge through the required checks. [Release assets](.github/workflows/publish.yml)
 calls the [private publisher](.github/workflows/publish-python.yml) from protected
 `master`. It resolves the exact tagged commit, requires merged source and a matching
 package name/version, reruns Linux/macOS quality checks, then builds distributions.
 Only after validation does it authenticate through Google workload federation and
 upload. It also attaches the wheel, sdist and `SHA256SUMS` to the GitHub release.
 
-For this release, publish `v0.4.3` after merging. The release assets
-will be `nox_py_standards-0.4.3-py3-none-any.whl` and
+The `v0.4.3` release assets are `nox_py_standards-0.4.3-py3-none-any.whl` and
 `nox_py_standards-0.4.3.tar.gz`. For an existing tag of the renamed distribution, run
 **Actions → Release assets → Run workflow** from `master` with that tag. Select
 `registry-only` to retain existing GitHub assets, including immutable releases.

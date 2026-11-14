@@ -1,0 +1,121 @@
+name: Automatic package release
+
+on:
+  push:
+    branches: [master]
+    paths: [pyproject.toml]
+
+permissions:
+  contents: read
+
+# Retain each version-bump commit even when another push arrives.
+concurrency:
+  group: automatic-release-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.event.deleted == false && github.ref == 'refs/heads/master'
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version-file: .python-version
+      - name: Detect a change to the package version
+        id: version
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import tomllib
+
+          def project_at(revision):
+              content = subprocess.check_output(
+                  ["git", "show", f"{revision}:pyproject.toml"], text=True
+              )
+              return tomllib.loads(content)["project"]
+
+          before = project_at(os.environ["BEFORE"])
+          after = project_at(os.environ["AFTER"])
+          if before["name"] != after["name"]:
+              raise SystemExit("Package renames require an explicit release change")
+          if before["version"] == after["version"]:
+              print("Package version unchanged; no release")
+          else:
+              version = after["version"]
+              if not isinstance(version, str) or not version or any(c.isspace() for c in version):
+                  raise SystemExit("Invalid package version")
+              tag = "v" + version
+              subprocess.run(["git", "check-ref-format", "refs/tags/" + tag], check=True)
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                  output.write("tag=" + tag + "\n")
+          PY
+
+  release:
+    needs: version
+    if: needs.version.outputs.tag != ''
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Create the exact release and start the trusted publisher
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          RELEASE_TAG: ${{ needs.version.outputs.tag }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const commit = process.env.RELEASE_COMMIT;
+            const ref = 'tags/' + tag;
+            let object;
+            try {
+              ({data: {object}} = await github.rest.git.getRef({...context.repo, ref}));
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              ({data: {object}} = await github.rest.git.createRef({
+                ...context.repo, ref: 'refs/' + ref, sha: commit,
+              }));
+            }
+            while (object.type === 'tag') {
+              const {data} = await github.rest.git.getTag({...context.repo, tag_sha: object.sha});
+              object = data.object;
+            }
+            if (object.type !== 'commit' || object.sha !== commit) {
+              throw new Error('The version tag already points to another commit; refusing to move it.');
+            }
+            let release;
+            try {
+              ({data: release} = await github.rest.repos.getReleaseByTag({...context.repo, tag}));
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              ({data: release} = await github.rest.repos.createRelease({
+                ...context.repo, tag_name: tag, target_commitish: commit,
+                generate_release_notes: true,
+                prerelease: /(?:a|b|rc|dev)\d/i.test(tag),
+              }));
+            }
+            if (release.draft) {
+              throw new Error('An existing draft release requires reconciliation; refusing to publish it.');
+            }
+            // GITHUB_TOKEN-created releases do not trigger release-event workflows.
+            // Dispatch the existing master caller so its OIDC identity and all
+            // independent validation/quality gates stay unchanged.
+            await github.rest.actions.createWorkflowDispatch({
+              ...context.repo, workflow_id: 'publish.yml', ref: 'master',
+              inputs: {tag, 'registry-only': false},
+            });
+            core.info('Started the trusted publisher for ' + tag + ' at ' + commit);
