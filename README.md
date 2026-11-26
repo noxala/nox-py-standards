@@ -74,6 +74,21 @@ in CI; adapt them explicitly to the consuming repository.
 Release 0.4.3 enables Ruff `PLC0415` (`import-outside-top-level`) in the shared
 policy. Consumer adoption flags imports inside functions and other blocks.
 
+## Explain design decisions with worked examples
+
+State the rule, walk through a familiar example, then show the consequence that
+explains why the rule exists. For a tool contract, identify who owns the decision,
+what the command observes or changes, and what a contributor will see. Keep examples
+that explain why two similar commands exist.
+
+1. A maintainer upgrades a consumer to a release with a changed shared setting. Its
+   checked-in configuration still has the old value.
+2. CI runs `check`. It reports the drift and leaves the working tree intact.
+3. The maintainer runs `sync` explicitly and reviews the resulting diff. Keeping
+   detection separate from adoption makes the policy change visible in review.
+
+[Check and sync](#check-and-sync)
+
 ## Native fix policy
 
 Checked Ruff settings enforce its exact version and approve PT007 via
