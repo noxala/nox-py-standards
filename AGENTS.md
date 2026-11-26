@@ -21,6 +21,7 @@ Read the references relevant to your task:
   Standards must pass before fixes; never auto-sync. Tests mirror modules in `test/`.
 - Consumer adoption: [installation](README.md#install-and-adopt); pin a published
   version. Releases: [publishing](README.md#publishing).
+- Concept docs, docstrings and comments: [Writing guidance](README.md#explain-design-decisions-with-worked-examples).
 - Documentation checker: [rules and ownership](docs/DOCUMENTATION_CHECKS.md).
   Preserve consumer policy; run `uv run --locked nox-docs-check` for guidance edits.
 
